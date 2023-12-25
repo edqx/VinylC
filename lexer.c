@@ -553,7 +553,7 @@ READ_TOKEN_FUNCTION(assignment) {
 }
 
 READ_TOKEN_FUNCTION(operator) {
-    const char* operatorSet[] = { "==", ">=", "<=", "+", "-", "*", "/", "%" };
+    const char* operatorSet[] = { "==", ">=", "<=", "+", "-", "*", "/", "%", "&" };
     return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_OPERATOR, operatorSet, sizeof(operatorSet) / sizeof(const char*));
 }
 
