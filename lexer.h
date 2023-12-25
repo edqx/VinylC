@@ -73,7 +73,8 @@ char close_and_retreat_read_session(struct read_session* rsSelf);
 #define TOKEN_KIND_ACCESSOR (char)6
 #define TOKEN_KIND_ASSIGNMENT (char)7
 #define TOKEN_KIND_OPERATOR (char)8
-#define TOKEN_KIND_SEPARATOR (char) 9
+#define TOKEN_KIND_SEPARATOR (char)9
+#define TOKEN_KIND_REFERENCE (char)10
 
 struct token {
     char iKind;
@@ -106,3 +107,4 @@ READ_TOKEN_FUNCTION(accessor);
 READ_TOKEN_FUNCTION(assignment);
 READ_TOKEN_FUNCTION(operator);
 READ_TOKEN_FUNCTION(separator);
+READ_TOKEN_FUNCTION(reference);
