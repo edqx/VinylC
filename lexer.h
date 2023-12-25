@@ -3,6 +3,7 @@
 #define INPUT_READER_ALREADY_INITIALIZED '\2'
 #define INPUT_READER_NOT_INITIALIZED '\3'
 #define INPUT_READER_OOB '\4'
+#define INPUT_READER_REJECT '\5'
 
 struct input_reader {
     const char* pFileName;
@@ -25,6 +26,7 @@ struct file_input_idx_range {
 struct input_reader create_input_reader();
 char assert_input_reader_not_initialized(struct input_reader* irSelf);
 char init_input_reader(struct input_reader* irSelf, const char* pFileName, const char* pInput);
+char get_remaining_bytes(struct input_reader* irSelf, unsigned int* out_iRemainingBytes);
 char peek_next_char(struct input_reader* irSelf, char* out_pChar);
 char advance_next_char(struct input_reader* irSelf, char* out_pChar);
 char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, int* iBytesRead, char(*fpPredicate)(char iNext));

@@ -25,6 +25,13 @@ char init_input_reader(struct input_reader* irSelf, const char* pFileName, const
     return INPUT_READER_SUCCESS;
 }
 
+char get_remaining_bytes(struct input_reader* irSelf, unsigned int* out_iRemainingBytes) {
+    if (assert_input_reader_not_initialized(irSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
+
+    *out_iRemainingBytes = irSelf->uDataLen - irSelf->uCaret;
+    return INPUT_READER_SUCCESS;
+}
+
 char peek_next_char(struct input_reader* irSelf, char* out_pChar) {
     if (assert_input_reader_not_initialized(irSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
 
@@ -50,7 +57,8 @@ char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, int* iB
     int i = 0;
     char eAdvance = 0;
     while ((eAdvance = advance_next_char(irSelf, &(*ppBuff)[i])) == INPUT_READER_SUCCESS) {
-        if (fpPredicate((*ppBuff)[i]) == INPUT_READER_FAIL) {
+        char ePred = fpPredicate((*ppBuff)[i]);
+        if (ePred == INPUT_READER_REJECT) {
             if (iBytesRead > 0) {
                 *ppBuff = (char*)realloc(*ppBuff, i + 1);
                 if (*ppBuff == 0) return INPUT_READER_FAIL;
@@ -58,8 +66,11 @@ char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, int* iB
                 return INPUT_READER_SUCCESS;
             } else {
                 free(*ppBuff);
-                return INPUT_READER_FAIL;
+                return INPUT_READER_REJECT;
             }
+        } else if (ePred != INPUT_READER_SUCCESS /* predicate function totally failed */) {
+            free(*ppBuff);
+            return ePred;
         }
         i++;
         if (i >= buffSize) {
@@ -140,17 +151,23 @@ void get_tokens(const char* pFileName, const char* pInput) {
     init_read_session(&session1, &reader);
     open_read_session(&session1);
 
-    struct token token = create_token();
-    read_token_ident(&reader, &token);
+    struct vector token_list = create_vector();
+    init_vector(&token_list, 500, sizeof(struct token));
+
+    int remainingBytes;
+    while (get_remaining_bytes(&reader, &remainingBytes) == INPUT_READER_SUCCESS && remainingBytes > 0) {
+        struct token token = create_token();
+        read_token_ident(&reader, &token);
+    }
 }
 
 char is_digit(char c) {
-    return c >= '0' && c <= '9' ? INPUT_READER_SUCCESS : INPUT_READER_FAIL;
+    return c >= '0' && c <= '9' ? INPUT_READER_SUCCESS : INPUT_READER_REJECT;
 }
 
 char is_valid_identifier_char(char c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || is_digit(c) == INPUT_READER_SUCCESS
-        ? INPUT_READER_SUCCESS : INPUT_READER_FAIL; 
+        ? INPUT_READER_SUCCESS : INPUT_READER_REJECT; 
 }
 
 char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
@@ -168,7 +185,7 @@ char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
     if (is_digit(buff[0])) {
         free(buff);
         close_and_retreat_read_session(&wholeIdentifierSession);
-        return INPUT_READER_FAIL;
+        return INPUT_READER_REJECT;
     }
 
     struct file_input_idx_range range = create_file_input_idx_range();
@@ -195,11 +212,6 @@ char read_token_number(struct input_reader* irReader, struct token* out_tToken) 
     if (eReadNumber != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeIdentifierSession);
         return eReadNumber;
-    }
-    if (is_digit(buff[0])) {
-        free(buff);
-        close_and_retreat_read_session(&wholeIdentifierSession);
-        return INPUT_READER_FAIL;
     }
 
     struct file_input_idx_range range = create_file_input_idx_range();
