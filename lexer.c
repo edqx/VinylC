@@ -446,7 +446,10 @@ char read_token_par_open(struct input_reader* irReader, struct token* out_tToken
     buff[0] = openParenthesis;
     buff[1] = '\0';
     char eSet = set_token(out_tToken, TOKEN_KIND_PAR_OPEN, range, buff);
-    if (eSet != INPUT_READER_SUCCESS) return eSet;
+    if (eSet != INPUT_READER_SUCCESS) {
+        free(buff);
+        return eSet;
+    }
 
     return INPUT_READER_SUCCESS;
 }
@@ -481,7 +484,10 @@ char read_token_par_close(struct input_reader* irReader, struct token* out_tToke
     buff[0] = closeParenthesis;
     buff[1] = '\0';
     char eSet = set_token(out_tToken, TOKEN_KIND_PAR_CLOSE, range, buff);
-    if (eSet != INPUT_READER_SUCCESS) return eSet;
+    if (eSet != INPUT_READER_SUCCESS) {
+        free(buff);
+        return eSet;
+    }
 
     return INPUT_READER_SUCCESS;
 }
