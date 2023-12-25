@@ -50,19 +50,21 @@ char advance_next_char(struct input_reader* irSelf, char* out_pChar) {
     return INPUT_READER_SUCCESS;
 }
 
-char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, int* iBytesRead, char(*fpPredicate)(char iNext)) {
-    int buffSize = 32;
+char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigned int* iBytesRead, char(*fpPredicate)(char iNext)) {
+    unsigned int buffSize = 32;
     *ppBuff = (char*)calloc(buffSize, sizeof(char));
     if (*ppBuff == 0) return INPUT_READER_FAIL;
-    int i = 0;
+    unsigned int i = 0;
     char eAdvance = 0;
     while ((eAdvance = advance_next_char(irSelf, &(*ppBuff)[i])) == INPUT_READER_SUCCESS) {
         char ePred = fpPredicate((*ppBuff)[i]);
         if (ePred == INPUT_READER_REJECT) {
-            if (iBytesRead > 0) {
+            irSelf->uCaret--;
+            if (i > 0) {
                 *ppBuff = (char*)realloc(*ppBuff, i + 1);
                 if (*ppBuff == 0) return INPUT_READER_FAIL;
                 (*ppBuff)[i] = '\0';
+                *iBytesRead = i;
                 return INPUT_READER_SUCCESS;
             } else {
                 free(*ppBuff);
@@ -83,6 +85,7 @@ char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, int* iB
         *ppBuff = (char*)realloc(*ppBuff, i + 1);
         if (*ppBuff == 0) return INPUT_READER_FAIL;
         (*ppBuff)[i] = '\0';
+        *iBytesRead = i;
         return INPUT_READER_SUCCESS;
     }
     free(*ppBuff);
@@ -96,6 +99,13 @@ struct read_session create_read_session() {
 
 struct file_input_idx_range create_file_input_idx_range() {
     struct file_input_idx_range out = {};
+    return out;
+}
+
+struct file_input_idx_range contain_file_input_idx_range(struct file_input_idx_range a, struct file_input_idx_range b) {
+    struct file_input_idx_range out = create_file_input_idx_range();
+    out.uStartIdx = a.uStartIdx < b.uStartIdx ? a.uStartIdx : b.uStartIdx;
+    out.uEndIdx = a.uEndIdx > b.uEndIdx ? a.uEndIdx : b.uEndIdx;
     return out;
 }
 
@@ -143,7 +153,7 @@ char set_token(struct token* tSelf, char iKind, struct file_input_idx_range fiir
     return INPUT_READER_SUCCESS;
 }
 
-void get_tokens(const char* pFileName, const char* pInput) {
+char get_tokens(const char* pFileName, const char* pInput) {
     struct input_reader reader = create_input_reader();
     init_input_reader(&reader, pFileName, pInput);
 
@@ -157,8 +167,19 @@ void get_tokens(const char* pFileName, const char* pInput) {
     int remainingBytes;
     while (get_remaining_bytes(&reader, &remainingBytes) == INPUT_READER_SUCCESS && remainingBytes > 0) {
         struct token token = create_token();
-        read_token_ident(&reader, &token);
+        char e1 = read_token_ident(&reader, &token);
+        if (e1 == INPUT_READER_SUCCESS) continue;
+        if (e1 != INPUT_READER_REJECT) return e1;
+        
+        char e2 = read_token_number(&reader, &token);
+        if (e2 == INPUT_READER_SUCCESS) continue;
+        if (e2 != INPUT_READER_REJECT) return e2;
+
+        char tmp;
+        advance_next_char(&reader, &tmp);
     }
+
+    return INPUT_READER_SUCCESS;
 }
 
 char is_digit(char c) {
@@ -174,15 +195,18 @@ char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
     struct read_session wholeIdentifierSession = create_read_session();
     char eInit = init_read_session(&wholeIdentifierSession, irReader);
     if (eInit != INPUT_READER_SUCCESS) return eInit;
+    
+    char eOpen = open_read_session(&wholeIdentifierSession);
+    if (eOpen != INPUT_READER_SUCCESS) return eOpen;
 
     char* buff = 0;
-    int bytesRead = 0;
+    unsigned int bytesRead = 0;
     char eReadIdent = allocate_and_read_while(irReader, &buff, &bytesRead, &is_valid_identifier_char);
     if (eReadIdent != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeIdentifierSession);
         return eReadIdent;
     }
-    if (is_digit(buff[0])) {
+    if (is_digit(buff[0]) == INPUT_READER_SUCCESS) {
         free(buff);
         close_and_retreat_read_session(&wholeIdentifierSession);
         return INPUT_READER_REJECT;
@@ -201,28 +225,85 @@ char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
     return INPUT_READER_SUCCESS;
 }
 
+char read_token_number_decimal(struct input_reader* irReader, char* pNumberStrBuff, unsigned int iNumberBytesRead, struct file_input_idx_range* fiirDecimalRange) {
+    struct read_session decimalSession = create_read_session();
+    char eInit2 = init_read_session(&decimalSession, irReader);
+    if (eInit2 != INPUT_READER_SUCCESS) return eInit2;
+    
+    char eOpen2 = open_read_session(&decimalSession);
+    if (eOpen2 != INPUT_READER_SUCCESS) return eOpen2;
+
+    char decimalChar;
+    char ePeekDecimal = peek_next_char(irReader, &decimalChar);
+    if (decimalChar != '.') {
+        close_and_retreat_read_session(&decimalSession);
+        return INPUT_READER_REJECT;
+    }
+
+    advance_next_char(irReader, &decimalChar);
+    char* buffDecimal = 0;
+    unsigned int bytesReadDecimal = 0;
+    char eReadDecimal = allocate_and_read_while(irReader, &buffDecimal, &bytesReadDecimal, &is_digit);
+    if (eReadDecimal != INPUT_READER_SUCCESS) {
+        close_and_retreat_read_session(&decimalSession);
+        if (eReadDecimal != INPUT_READER_REJECT) {
+            free(buffDecimal);
+            return eReadDecimal;
+        }
+        return INPUT_READER_REJECT;
+    }
+    pNumberStrBuff = (char*)realloc(pNumberStrBuff, iNumberBytesRead + 1 + bytesReadDecimal + 1 /* null-term */);
+    pNumberStrBuff[iNumberBytesRead] = '.';
+    memcpy(pNumberStrBuff + iNumberBytesRead + 1, buffDecimal, bytesReadDecimal);
+    free(buffDecimal);
+    pNumberStrBuff[iNumberBytesRead + 1 + bytesReadDecimal] = '\0';
+
+    struct file_input_idx_range range = create_file_input_idx_range();
+    char eClose2 = close_read_session(&decimalSession, &range);
+    if (eClose2 != INPUT_READER_SUCCESS) {
+        free(buffDecimal);
+        close_and_retreat_read_session(&decimalSession);
+        return INPUT_READER_FAIL;
+    }
+    *fiirDecimalRange = range;
+    return INPUT_READER_SUCCESS;
+}
+
 char read_token_number(struct input_reader* irReader, struct token* out_tToken) {
-    struct read_session wholeIdentifierSession = create_read_session();
-    char eInit = init_read_session(&wholeIdentifierSession, irReader);
+    struct read_session wholeNumberSession = create_read_session();
+    char eInit = init_read_session(&wholeNumberSession, irReader);
     if (eInit != INPUT_READER_SUCCESS) return eInit;
 
+    char eOpen = open_read_session(&wholeNumberSession);
+    if (eOpen != INPUT_READER_SUCCESS) return eOpen;
+
     char* buff = 0;
-    int bytesRead = 0;
+    unsigned int bytesRead = 0;
     char eReadNumber = allocate_and_read_while(irReader, &buff, &bytesRead, &is_digit);
     if (eReadNumber != INPUT_READER_SUCCESS) {
-        close_and_retreat_read_session(&wholeIdentifierSession);
+        close_and_retreat_read_session(&wholeNumberSession);
         return eReadNumber;
     }
 
+    struct file_input_idx_range decimalRange = create_file_input_idx_range();
+    char eReadDecimal = read_token_number_decimal(irReader, buff, bytesRead, &decimalRange);
+    if (eReadDecimal != INPUT_READER_SUCCESS && eReadDecimal != INPUT_READER_REJECT) {
+        return eReadDecimal;
+    }
+
     struct file_input_idx_range range = create_file_input_idx_range();
-    char eClose = close_read_session(&wholeIdentifierSession, &range);
+    char eClose = close_read_session(&wholeNumberSession, &range);
+    if (eReadDecimal == INPUT_READER_SUCCESS) range = contain_file_input_idx_range(range, decimalRange);
     if (eClose != INPUT_READER_SUCCESS) {
         free(buff);
-        close_and_retreat_read_session(&wholeIdentifierSession);
+        close_and_retreat_read_session(&wholeNumberSession);
         return INPUT_READER_FAIL;
     }
 
-    char eSet = set_token(out_tToken, TOKEN_KIND_IDENT, range, buff);
+    char eSet = set_token(out_tToken, TOKEN_KIND_NUMBER, range, buff);
     if (eSet != INPUT_READER_SUCCESS) return eSet;
+
+    printf("Read number %s\n", buff);
+
     return INPUT_READER_SUCCESS;
 }
