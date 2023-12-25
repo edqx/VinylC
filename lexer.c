@@ -5,6 +5,36 @@
 #include <stdlib.h>
 #include <memory.h>
 
+struct lexer_defect create_lexer_defect() {
+    struct lexer_defect out = {};
+    return out;
+}
+
+char assert_lexer_defect_not_initialized(struct lexer_defect* ldSelf) {
+    return ldSelf->irReader == 0 ? INPUT_READER_SUCCESS : INPUT_READER_FAIL;
+}
+
+char init_lexer_defect(struct lexer_defect* ldSelf, struct input_reader* irReader) {
+    if (assert_lexer_defect_not_initialized(ldSelf) == INPUT_READER_FAIL) return INPUT_READER_ALREADY_INITIALIZED;
+
+    ldSelf->irReader = irReader;
+    return INPUT_READER_SUCCESS;
+}
+
+char assert_lexer_defect_not_raised(struct lexer_defect* ldSelf) {
+    return ldSelf->bRaised == 0 ? INPUT_READER_SUCCESS : INPUT_READER_FAIL;
+}
+
+char raise_lexer_defect(struct lexer_defect* ldSelf, unsigned int uDefectCode) {
+    if (assert_lexer_defect_not_initialized(ldSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
+    if (assert_lexer_defect_not_raised(ldSelf) == INPUT_READER_FAIL) return INPUT_READER_DEFECT_ALREADY_RAISED;
+
+    ldSelf->uDefectCode = uDefectCode;
+    ldSelf->uStartIdx = ldSelf->irReader->uCaret;
+    ldSelf->bRaised = 1;
+    return INPUT_READER_SUCCESS;
+}
+
 struct input_reader create_input_reader() {
     struct input_reader out = {};
     return out;
@@ -51,13 +81,13 @@ char advance_next_char(struct input_reader* irSelf, char* out_pChar) {
     return INPUT_READER_SUCCESS;
 }
 
-char advance_next_char_predicate(struct input_reader* irSelf, char* out_pChar, char(*fpPredicate)(char iNext, void* pCtx), void* pCtx) {
+char advance_next_char_predicate(struct input_reader* irSelf, char* out_pChar, READ_PREDICATE_FUNCTION((*fpPredicate)), struct lexer_defect* ldDefect, void* pCtx) {
     char peekChar;
     char ePeek = peek_next_char(irSelf, &peekChar);
     if (ePeek == INPUT_READER_OOB) return INPUT_READER_REJECT;
     if (ePeek != INPUT_READER_SUCCESS) return ePeek;
 
-    char result = fpPredicate(peekChar, pCtx);
+    char result = fpPredicate(peekChar, ldDefect, pCtx);
     if (result == INPUT_READER_SUCCESS) {
         char eAdvance = advance_next_char(irSelf, out_pChar);
         if (eAdvance != INPUT_READER_SUCCESS) return eAdvance;
@@ -65,13 +95,13 @@ char advance_next_char_predicate(struct input_reader* irSelf, char* out_pChar, c
     return result;
 }
 
-char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigned int* iBytesRead, char(*fpPredicate)(char iNext, void* pCtx), void* pCtx) {
+char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigned int* iBytesRead, READ_PREDICATE_FUNCTION((*fpPredicate)), struct lexer_defect* ldDefect, void* pCtx) {
     unsigned int buffSize = 32;
     *ppBuff = (char*)calloc(buffSize, sizeof(char));
     if (*ppBuff == 0) return INPUT_READER_FAIL;
     unsigned int i = 0;
     char eAdvance = 0;
-    while ((eAdvance = advance_next_char_predicate(irSelf, &(*ppBuff)[i], fpPredicate, pCtx)) == INPUT_READER_SUCCESS) {
+    while ((eAdvance = advance_next_char_predicate(irSelf, &(*ppBuff)[i], fpPredicate, ldDefect, pCtx)) == INPUT_READER_SUCCESS) {
         i++;
         if (i >= buffSize) {
             buffSize *= 2;
@@ -133,8 +163,10 @@ char open_read_session(struct read_session* rsSelf) {
 
 char close_read_session(struct read_session* rsSelf, struct file_input_idx_range* fiirRange) {
     if (assert_read_session_not_initialized(rsSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
-    fiirRange->uStartIdx = rsSelf->uStartCaret;
-    fiirRange->uEndIdx = rsSelf->irParent->uCaret;
+    if (fiirRange != 0) {
+        fiirRange->uStartIdx = rsSelf->uStartCaret;
+        fiirRange->uEndIdx = rsSelf->irParent->uCaret;
+    }
     return INPUT_READER_SUCCESS;
 }
 
@@ -164,16 +196,43 @@ char get_tokens(const char* pFileName, const char* pInput) {
     init_read_session(&session1, &reader);
     open_read_session(&session1);
 
+    struct vector defect_list = create_vector();
+    init_vector(&defect_list, 500, sizeof(struct lexer_defect));
+
     struct vector token_list = create_vector();
     init_vector(&token_list, 500, sizeof(struct token));
 
     int remainingBytes;
     while (get_remaining_bytes(&reader, &remainingBytes) == INPUT_READER_SUCCESS && remainingBytes > 0) {
         struct token token = create_token();
-        char eReadNextToken = read_next_token(&reader, &token);
+        struct lexer_defect defect = create_lexer_defect();
+        char eDefect = init_lexer_defect(&defect, &reader);
+        if (eDefect != INPUT_READER_SUCCESS) return eDefect;
+        char eReadNextToken = read_token_next(&reader, &defect, &token);
+        if (eReadNextToken == INPUT_READER_DEFECT) {
+            if (assert_lexer_defect_not_raised(&defect) == INPUT_READER_SUCCESS) return INPUT_READER_EXPECTED_DEFECT_NOT_RAISED;
+            vector_append(&defect_list, &defect);
+            continue;
+        }
         if (eReadNextToken == INPUT_READER_REJECT) continue;
         if (eReadNextToken != INPUT_READER_SUCCESS) return eReadNextToken;
         vector_append(&token_list, &token);
+    }
+
+    for (unsigned int i = 0; i < defect_list.uLength; i++) {
+        struct lexer_defect* defect;
+        char eGetDefect = vector_at_ref(&defect_list, i, (void**)&defect);
+        if (eGetDefect != INPUT_READER_SUCCESS) return eGetDefect;
+
+        printf("Lexer defect (%i) @ %i: ", defect->uDefectCode, defect->uStartIdx);
+        switch (defect->uDefectCode) {
+        case LEXER_DEFECT_NIL:
+            printf("Unknown defect\n");
+            break;
+        case LEXER_DEFECT_UNEXPECTED_NEWLINE:
+            printf("Unexpected newline in string\n");
+            break;
+        }
     }
 
     for (unsigned int i = 0; i < token_list.uLength; i++) {
@@ -187,14 +246,14 @@ char get_tokens(const char* pFileName, const char* pInput) {
     return INPUT_READER_SUCCESS;
 }
 
-char read_next_token(struct input_reader* irReader, struct token* out_tToken) {
-    char(*token_readers[5])(struct input_reader* irReader, struct token* out_tToken) =
+READ_TOKEN_FUNCTION(next) {
+    T_READ_TOKEN_FUNCTION((*token_readers[5])) =
         { &read_token_ident, &read_token_number, &read_token_string,
         &read_token_par_open, &read_token_par_close };
     int numReads = sizeof(token_readers) / sizeof(token_readers[0]);
 
     for (int i = 0; i < numReads; i++) {
-        char e1 = token_readers[i](irReader, out_tToken);
+        char e1 = token_readers[i](irReader, ldDefect, out_tToken);
         if (e1 == INPUT_READER_SUCCESS) return INPUT_READER_SUCCESS;
         if (e1 != INPUT_READER_REJECT) return e1;
     }
@@ -209,7 +268,7 @@ READ_PREDICATE_FUNCTION(is_digit) {
 }
 
 READ_PREDICATE_FUNCTION(is_valid_identifier_char) {
-    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || is_digit(c, pCtx) == INPUT_READER_SUCCESS
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || is_digit(c, ldDefect, pCtx) == INPUT_READER_SUCCESS
         ? INPUT_READER_SUCCESS : INPUT_READER_REJECT; 
 }
 
@@ -231,7 +290,10 @@ READ_PREDICATE_FUNCTION(is_non_closing_quote) {
         if (*escapeParity == 0) return INPUT_READER_REJECT;
         *escapeParity = 0;
         return INPUT_READER_SUCCESS;
-    case '\n': return INPUT_READER_UNEXPECTED_END;
+    case '\n':
+        char eRaise = raise_lexer_defect(ldDefect, LEXER_DEFECT_UNEXPECTED_NEWLINE);
+        if (eRaise != INPUT_READER_SUCCESS) return eRaise;
+        return INPUT_READER_DEFECT;
     }
     return INPUT_READER_SUCCESS;
 }
@@ -244,7 +306,7 @@ READ_PREDICATE_FUNCTION(is_close_parenthesis) {
     return c == ')' || c == ']' || c == '}' ? INPUT_READER_SUCCESS : INPUT_READER_REJECT;
 }
 
-char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
+READ_TOKEN_FUNCTION(ident) {
     struct read_session wholeIdentifierSession = create_read_session();
     char eInit = init_read_session(&wholeIdentifierSession, irReader);
     if (eInit != INPUT_READER_SUCCESS) return eInit;
@@ -258,14 +320,14 @@ char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
         close_and_retreat_read_session(&wholeIdentifierSession);
         return ePeek;
     }
-    if (is_digit(ePeekFirst, 0) == INPUT_READER_SUCCESS) {
+    if (is_digit(ePeekFirst, ldDefect, 0) == INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeIdentifierSession);
         return INPUT_READER_REJECT;
     }
 
     char* buff = 0;
     unsigned int bytesRead = 0;
-    char eReadIdent = allocate_and_read_while(irReader, &buff, &bytesRead, &is_valid_identifier_char, 0);
+    char eReadIdent = allocate_and_read_while(irReader, &buff, &bytesRead, &is_valid_identifier_char, ldDefect, 0);
     if (eReadIdent != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeIdentifierSession);
         return eReadIdent;
@@ -285,7 +347,7 @@ char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
     return INPUT_READER_SUCCESS;
 }
 
-char read_token_number_decimal(struct input_reader* irReader, char* pNumberStrBuff, unsigned int iNumberBytesRead, struct file_input_idx_range* fiirDecimalRange) {
+char read_token_number_decimal(struct input_reader* irReader, struct lexer_defect* ldDefect, char* pNumberStrBuff, unsigned int iNumberBytesRead, struct file_input_idx_range* fiirDecimalRange) {
     struct read_session decimalSession = create_read_session();
     char eInit2 = init_read_session(&decimalSession, irReader);
     if (eInit2 != INPUT_READER_SUCCESS) return eInit2;
@@ -303,7 +365,7 @@ char read_token_number_decimal(struct input_reader* irReader, char* pNumberStrBu
     advance_next_char(irReader, &decimalChar);
     char* buffDecimal = 0;
     unsigned int bytesReadDecimal = 0;
-    char eReadDecimal = allocate_and_read_while(irReader, &buffDecimal, &bytesReadDecimal, &is_digit, 0);
+    char eReadDecimal = allocate_and_read_while(irReader, &buffDecimal, &bytesReadDecimal, &is_digit, ldDefect, 0);
     if (eReadDecimal != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&decimalSession);
         if (eReadDecimal != INPUT_READER_REJECT) {
@@ -329,7 +391,7 @@ char read_token_number_decimal(struct input_reader* irReader, char* pNumberStrBu
     return INPUT_READER_SUCCESS;
 }
 
-char read_token_number(struct input_reader* irReader, struct token* out_tToken) {
+READ_TOKEN_FUNCTION(number) {
     struct read_session wholeNumberSession = create_read_session();
     char eInit = init_read_session(&wholeNumberSession, irReader);
     if (eInit != INPUT_READER_SUCCESS) return eInit;
@@ -339,14 +401,14 @@ char read_token_number(struct input_reader* irReader, struct token* out_tToken) 
 
     char* buff = 0;
     unsigned int bytesRead = 0;
-    char eReadNumber = allocate_and_read_while(irReader, &buff, &bytesRead, &is_digit, 0);
+    char eReadNumber = allocate_and_read_while(irReader, &buff, &bytesRead, &is_digit, ldDefect, 0);
     if (eReadNumber != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeNumberSession);
         return eReadNumber;
     }
 
     struct file_input_idx_range decimalRange = create_file_input_idx_range();
-    char eReadDecimal = read_token_number_decimal(irReader, buff, bytesRead, &decimalRange);
+    char eReadDecimal = read_token_number_decimal(irReader, ldDefect, buff, bytesRead, &decimalRange);
     if (eReadDecimal != INPUT_READER_SUCCESS && eReadDecimal != INPUT_READER_REJECT) {
         return eReadDecimal;
     }
@@ -366,7 +428,7 @@ char read_token_number(struct input_reader* irReader, struct token* out_tToken) 
     return INPUT_READER_SUCCESS;
 }
 
-char read_token_string(struct input_reader* irReader, struct token* out_tToken) {
+READ_TOKEN_FUNCTION(string) {
     struct read_session wholeStringSession = create_read_session();
     char eInit = init_read_session(&wholeStringSession, irReader);
     if (eInit != INPUT_READER_SUCCESS) return eInit;
@@ -374,7 +436,7 @@ char read_token_string(struct input_reader* irReader, struct token* out_tToken) 
     char eOpen = open_read_session(&wholeStringSession);
     if (eOpen != INPUT_READER_SUCCESS) return eOpen;
 
-    char ePeek = advance_next_char_predicate(irReader, 0, &is_quote, 0);
+    char ePeek = advance_next_char_predicate(irReader, 0, &is_quote, ldDefect, 0);
     if (ePeek != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeStringSession);
         return ePeek;
@@ -383,12 +445,19 @@ char read_token_string(struct input_reader* irReader, struct token* out_tToken) 
     char* buff = 0;
     unsigned int bytesRead = 0;
     char backslashParity = 0;
-    char eReadIdent = allocate_and_read_while(irReader, &buff, &bytesRead, &is_non_closing_quote, &backslashParity);char ePeek2 = advance_next_char_predicate(irReader, 0, &is_closing_quote, 0);
-    if (eReadIdent == INPUT_READER_SUCCESS || eReadIdent == INPUT_READER_REJECT) {
-        if (ePeek2 != INPUT_READER_SUCCESS) {
+    char eReadIdent = allocate_and_read_while(irReader, &buff, &bytesRead, &is_non_closing_quote, ldDefect, &backslashParity);
+    if (eReadIdent != INPUT_READER_SUCCESS && eReadIdent != INPUT_READER_REJECT) {
+        if (eReadIdent == INPUT_READER_DEFECT) {
+            close_read_session(&wholeStringSession, 0); /* safely skip string if it has lexer defect */
+        } else {
             close_and_retreat_read_session(&wholeStringSession);
-            return ePeek2;
         }
+        return eReadIdent;
+    }
+    char ePeek2 = advance_next_char_predicate(irReader, 0, &is_closing_quote, ldDefect, 0);
+    if (ePeek2 != INPUT_READER_SUCCESS) {
+        close_and_retreat_read_session(&wholeStringSession);
+        return ePeek2;
     }
     if (eReadIdent == INPUT_READER_REJECT) {
         buff = (char*)malloc(1);
@@ -416,7 +485,7 @@ char read_token_string(struct input_reader* irReader, struct token* out_tToken) 
     return INPUT_READER_SUCCESS;
 }
 
-char read_token_par_open(struct input_reader* irReader, struct token* out_tToken) {
+READ_TOKEN_FUNCTION(par_open) {
     struct read_session wholeParenthesisSession = create_read_session();
     char eInit = init_read_session(&wholeParenthesisSession, irReader);
     if (eInit != INPUT_READER_SUCCESS) return eInit;
@@ -425,7 +494,7 @@ char read_token_par_open(struct input_reader* irReader, struct token* out_tToken
     if (eOpen != INPUT_READER_SUCCESS) return eOpen;
 
     char openParenthesis;
-    char ePeek = advance_next_char_predicate(irReader, &openParenthesis, &is_open_parenthesis, 0);
+    char ePeek = advance_next_char_predicate(irReader, &openParenthesis, &is_open_parenthesis, ldDefect, 0);
     if (ePeek != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeParenthesisSession);
         return ePeek;
@@ -454,7 +523,7 @@ char read_token_par_open(struct input_reader* irReader, struct token* out_tToken
     return INPUT_READER_SUCCESS;
 }
 
-char read_token_par_close(struct input_reader* irReader, struct token* out_tToken) {
+READ_TOKEN_FUNCTION(par_close) {
     struct read_session wholeParenthesisSession = create_read_session();
     char eInit = init_read_session(&wholeParenthesisSession, irReader);
     if (eInit != INPUT_READER_SUCCESS) return eInit;
@@ -463,7 +532,7 @@ char read_token_par_close(struct input_reader* irReader, struct token* out_tToke
     if (eOpen != INPUT_READER_SUCCESS) return eOpen;
 
     char closeParenthesis;
-    char ePeek = advance_next_char_predicate(irReader, &closeParenthesis, &is_close_parenthesis, 0);
+    char ePeek = advance_next_char_predicate(irReader, &closeParenthesis, &is_close_parenthesis, ldDefect, 0);
     if (ePeek != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeParenthesisSession);
         return ePeek;

@@ -4,13 +4,25 @@
 #define INPUT_READER_NOT_INITIALIZED (char)3
 #define INPUT_READER_OOB (char)4
 #define INPUT_READER_REJECT (char)5
-#define INPUT_READER_UNEXPECTED_END (char)6
+#define INPUT_READER_DEFECT (char)6
+#define INPUT_READER_EXPECTED_DEFECT_NOT_RAISED (char)7
+#define INPUT_READER_DEFECT_ALREADY_RAISED (char)8
+
+#define LEXER_DEFECT_NIL (char)0
+#define LEXER_DEFECT_UNEXPECTED_NEWLINE (char)1
 
 struct input_reader {
     const char* pFileName;
     const char* pInput;
     unsigned int uDataLen;
     unsigned int uCaret;
+};
+
+struct lexer_defect {
+    struct input_reader* irReader;
+    char bRaised;
+    unsigned int uStartIdx;
+    unsigned int uDefectCode;
 };
 
 struct read_session {
@@ -31,9 +43,17 @@ char get_remaining_bytes(struct input_reader* irSelf, unsigned int* out_iRemaini
 char peek_next_char(struct input_reader* irSelf, char* out_pChar);
 char advance_next_char(struct input_reader* irSelf, char* out_pChar);
 
-#define READ_PREDICATE_FUNCTION(NAME) char NAME(char c, void* pCtx)
-char advance_next_char_predicate(struct input_reader* irSelf, char* out_pChar, char(*fpPredicate)(char iNext, void* pCtx), void* pCtx);
-char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigned int* iBytesRead, char(*fpPredicate)(char iNext, void* pCtx), void* pCtx);
+
+#define READ_PREDICATE_FUNCTION(NAME) char NAME(char c, struct lexer_defect* ldDefect, void* pCtx)
+
+char advance_next_char_predicate(struct input_reader* irSelf, char* out_pChar, READ_PREDICATE_FUNCTION((*fpPredicate)), struct lexer_defect* ldDefect, void* pCtx);
+char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigned int* iBytesRead, READ_PREDICATE_FUNCTION((*fpPredicate)), struct lexer_defect* ldDefect, void* pCtx);
+
+struct lexer_defect create_lexer_defect();
+char assert_lexer_defect_not_initialized(struct lexer_defect* ldSelf);
+char init_lexer_defect(struct lexer_defect* ldSelf, struct input_reader* irReader);
+char assert_lexer_defect_not_raised(struct lexer_defect* ldSelf);
+char raise_lexer_defect(struct lexer_defect* ldSelf, unsigned int uDefectCode);
 
 struct read_session create_read_session();
 struct file_input_idx_range create_file_input_idx_range();
@@ -61,6 +81,7 @@ struct token {
     const char* content;
 };
 
+
 READ_PREDICATE_FUNCTION(is_digit);
 READ_PREDICATE_FUNCTION(is_valid_identifier_char);
 READ_PREDICATE_FUNCTION(is_quote);
@@ -72,10 +93,13 @@ READ_PREDICATE_FUNCTION(is_close_parenthesis);
 struct token create_token();
 char set_token(struct token* tSelf, char iKind, struct file_input_idx_range fiirFileRange, const char* content);
 char get_tokens(const char* pFileName, const char* pInput);
-char read_next_token(struct input_reader* irReader, struct token* out_tToken);
-char read_token_ident(struct input_reader* irReader, struct token* out_tToken);
-char read_token_number_decimal(struct input_reader* irReader, char* pNumberStrBuff, unsigned int iNumberBytesRead, struct file_input_idx_range* fiirDecimalRange);
-char read_token_number(struct input_reader* irReader, struct token* out_tToken);
-char read_token_string(struct input_reader* irReader, struct token* out_tToken);
-char read_token_par_open(struct input_reader* irReader, struct token* out_tToken);
-char read_token_par_close(struct input_reader* irReader, struct token* out_tToken);
+
+#define T_READ_TOKEN_FUNCTION(NAME) char NAME(struct input_reader* irReader, struct lexer_defect* ldDefect, struct token* out_tToken)
+#define READ_TOKEN_FUNCTION(NAME) T_READ_TOKEN_FUNCTION(read_token_##NAME)
+READ_TOKEN_FUNCTION(next);
+READ_TOKEN_FUNCTION(ident);
+char read_token_number_decimal(struct input_reader* irReader, struct lexer_defect* ldDefect, char* pNumberStrBuff, unsigned int iNumberBytesRead, struct file_input_idx_range* fiirDecimalRange);
+READ_TOKEN_FUNCTION(number);
+READ_TOKEN_FUNCTION(string);
+READ_TOKEN_FUNCTION(par_open);
+READ_TOKEN_FUNCTION(par_close);

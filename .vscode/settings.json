@@ -4,5 +4,6 @@
         "lexer.h": "c",
         "stdio.h": "c",
         "memory.h": "c"
-    }
+    },
+    "editor.fontSize": 10
 }
