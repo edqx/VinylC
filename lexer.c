@@ -72,10 +72,10 @@ char peek_next_char(struct input_reader* irSelf, char* out_pChar) {
 
 char advance_next_char(struct input_reader* irSelf, char* out_pChar) {
     if (assert_input_reader_not_initialized(irSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
+    if (irSelf->uCaret >= irSelf->uDataLen) return INPUT_READER_OOB;
     
     if (out_pChar != 0) {
-        char e = peek_next_char(irSelf, out_pChar);
-        if (e != INPUT_READER_SUCCESS) return e;
+        *out_pChar = irSelf->pInput[irSelf->uCaret];
     }
     irSelf->uCaret++;
     return INPUT_READER_SUCCESS;
@@ -123,6 +123,22 @@ char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigne
     }
 
     return eAdvance;
+}
+
+char allocate_and_read_many_chars(struct input_reader* irSelf, char** out_pChar, char* pChars, int iNumChars) {
+    if (assert_input_reader_not_initialized(irSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
+    if (irSelf->uCaret >= irSelf->uDataLen - (iNumChars - 1)) return INPUT_READER_OOB;
+
+    const char* base = &irSelf->pInput[irSelf->uCaret];
+    if (memcmp(base, pChars, iNumChars) == 0) {
+        *out_pChar = (char*)malloc(iNumChars + 1);
+        if (*out_pChar == 0) return INPUT_READER_FAIL;
+        irSelf->uCaret += iNumChars;
+        memcpy(*out_pChar, base, iNumChars);
+        (*out_pChar)[iNumChars] = '\0';
+        return INPUT_READER_SUCCESS;
+    }
+    return INPUT_READER_REJECT;
 }
 
 struct read_session create_read_session() {
@@ -247,9 +263,10 @@ char get_tokens(const char* pFileName, const char* pInput) {
 }
 
 READ_TOKEN_FUNCTION(next) {
-    T_READ_TOKEN_FUNCTION((*token_readers[5])) =
+    T_READ_TOKEN_FUNCTION((*token_readers[])) =
         { &read_token_ident, &read_token_number, &read_token_string,
-        &read_token_par_open, &read_token_par_close };
+        &read_token_par_open, &read_token_par_close, &read_token_operator,
+        &read_token_assignment, &read_token_accessor, &read_token_separator };
     int numReads = sizeof(token_readers) / sizeof(token_readers[0]);
 
     for (int i = 0; i < numReads; i++) {
@@ -298,12 +315,42 @@ READ_PREDICATE_FUNCTION(is_non_closing_quote) {
     return INPUT_READER_SUCCESS;
 }
 
-READ_PREDICATE_FUNCTION(is_open_parenthesis) {
-    return c == '(' || c == '[' || c == '{' ? INPUT_READER_SUCCESS : INPUT_READER_REJECT;
-}
+char read_token_enum(struct input_reader* irReader, struct lexer_defect* ldDefect, struct token* out_tToken, char iTokenKind, const char** ppEnum, unsigned int uNumEnum){
+    struct read_session wholeEnumSession = create_read_session();
+    char eInit = init_read_session(&wholeEnumSession, irReader);
+    if (eInit != INPUT_READER_SUCCESS) return eInit;
+    
+    char eOpen = open_read_session(&wholeEnumSession);
+    if (eOpen != INPUT_READER_SUCCESS) return eOpen;
 
-READ_PREDICATE_FUNCTION(is_close_parenthesis) {
-    return c == ')' || c == ']' || c == '}' ? INPUT_READER_SUCCESS : INPUT_READER_REJECT;
+    char enumString;
+    for (int i = 0; i < uNumEnum; i++) {
+        const char* chars = ppEnum[i];
+        char* buff = 0;
+        char eReadChars = allocate_and_read_many_chars(irReader, &buff, (char*)chars, strlen(chars));
+        if (eReadChars == INPUT_READER_REJECT) continue;
+        if (eReadChars != INPUT_READER_SUCCESS) return eReadChars;
+        if (buff == 0) {
+            close_and_retreat_read_session(&wholeEnumSession);
+            return INPUT_READER_FAIL;
+        }
+
+        struct file_input_idx_range range = create_file_input_idx_range();
+        char eClose = close_read_session(&wholeEnumSession, &range);
+        if (eClose != INPUT_READER_SUCCESS) {
+            free(buff);
+            close_and_retreat_read_session(&wholeEnumSession);
+            return INPUT_READER_FAIL;
+        }
+        char eSet = set_token(out_tToken, iTokenKind, range, buff);
+        if (eSet != INPUT_READER_SUCCESS) {
+            free(buff);
+            return eSet;
+        }
+
+        return INPUT_READER_SUCCESS;
+    }
+    return INPUT_READER_REJECT;
 }
 
 READ_TOKEN_FUNCTION(ident) {
@@ -486,77 +533,31 @@ READ_TOKEN_FUNCTION(string) {
 }
 
 READ_TOKEN_FUNCTION(par_open) {
-    struct read_session wholeParenthesisSession = create_read_session();
-    char eInit = init_read_session(&wholeParenthesisSession, irReader);
-    if (eInit != INPUT_READER_SUCCESS) return eInit;
-    
-    char eOpen = open_read_session(&wholeParenthesisSession);
-    if (eOpen != INPUT_READER_SUCCESS) return eOpen;
-
-    char openParenthesis;
-    char ePeek = advance_next_char_predicate(irReader, &openParenthesis, &is_open_parenthesis, ldDefect, 0);
-    if (ePeek != INPUT_READER_SUCCESS) {
-        close_and_retreat_read_session(&wholeParenthesisSession);
-        return ePeek;
-    }
-    
-    struct file_input_idx_range range = create_file_input_idx_range();
-    char eClose = close_read_session(&wholeParenthesisSession, &range);
-    if (eClose != INPUT_READER_SUCCESS) {
-        close_and_retreat_read_session(&wholeParenthesisSession);
-        return INPUT_READER_FAIL;
-    }
-
-    char* buff = (char*)malloc(2);
-    if (buff == 0) {
-        close_and_retreat_read_session(&wholeParenthesisSession);
-        return INPUT_READER_FAIL;
-    }
-    buff[0] = openParenthesis;
-    buff[1] = '\0';
-    char eSet = set_token(out_tToken, TOKEN_KIND_PAR_OPEN, range, buff);
-    if (eSet != INPUT_READER_SUCCESS) {
-        free(buff);
-        return eSet;
-    }
-
-    return INPUT_READER_SUCCESS;
+    const char* parenthesisSet[] = { "(", "{", "[" };
+    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_PAR_OPEN, parenthesisSet, sizeof(parenthesisSet) / sizeof(const char*));
 }
 
 READ_TOKEN_FUNCTION(par_close) {
-    struct read_session wholeParenthesisSession = create_read_session();
-    char eInit = init_read_session(&wholeParenthesisSession, irReader);
-    if (eInit != INPUT_READER_SUCCESS) return eInit;
-    
-    char eOpen = open_read_session(&wholeParenthesisSession);
-    if (eOpen != INPUT_READER_SUCCESS) return eOpen;
+    const char* parenthesisSet[] = { ")", "}", "]" };
+    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_PAR_CLOSE, parenthesisSet, sizeof(parenthesisSet) / sizeof(const char*));
+}
 
-    char closeParenthesis;
-    char ePeek = advance_next_char_predicate(irReader, &closeParenthesis, &is_close_parenthesis, ldDefect, 0);
-    if (ePeek != INPUT_READER_SUCCESS) {
-        close_and_retreat_read_session(&wholeParenthesisSession);
-        return ePeek;
-    }
-    
-    struct file_input_idx_range range = create_file_input_idx_range();
-    char eClose = close_read_session(&wholeParenthesisSession, &range);
-    if (eClose != INPUT_READER_SUCCESS) {
-        close_and_retreat_read_session(&wholeParenthesisSession);
-        return INPUT_READER_FAIL;
-    }
+READ_TOKEN_FUNCTION(accessor) {
+    const char* accessorSet[] = { ".", "->" };
+    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_ACCESSOR, accessorSet, sizeof(accessorSet) / sizeof(const char*));
+}
 
-    char* buff = (char*)malloc(2);
-    if (buff == 0) {
-        close_and_retreat_read_session(&wholeParenthesisSession);
-        return INPUT_READER_FAIL;
-    }
-    buff[0] = closeParenthesis;
-    buff[1] = '\0';
-    char eSet = set_token(out_tToken, TOKEN_KIND_PAR_CLOSE, range, buff);
-    if (eSet != INPUT_READER_SUCCESS) {
-        free(buff);
-        return eSet;
-    }
+READ_TOKEN_FUNCTION(assignment) {
+    const char* assignmentSet[] = { "=" };
+    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_ASSIGNMENT, assignmentSet, sizeof(assignmentSet) / sizeof(const char*));
+}
 
-    return INPUT_READER_SUCCESS;
+READ_TOKEN_FUNCTION(operator) {
+    const char* operatorSet[] = { "==", ">=", "<=", "+", "-", "*", "/", "%" };
+    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_OPERATOR, operatorSet, sizeof(operatorSet) / sizeof(const char*));
+}
+
+READ_TOKEN_FUNCTION(separator) {
+    const char* separatorSet[] = { "==", ">=", "<=", "+", "-", "*", "/", "%" };
+    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_SEPARATOR,separatorSet, sizeof(separatorSet) / sizeof(const char*));
 }

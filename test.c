@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     vector_pop(&someVec, &out2);
     vector_pop(&someVec, &out3);
 
-    const char* myProgram = "\"hello\" two three four 3";
+    const char* myProgram = "\"hello\" two three four 3 + 2";
     get_tokens("hello.vinyl", myProgram);
 
     return 0;
