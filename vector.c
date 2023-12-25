@@ -37,7 +37,7 @@ char vector_append(struct vector* vSelf, void* pElement) {
     if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
 
     if (vSelf->uLength >= vSelf->uCapacity)
-        if (vector_expand(vSelf, vSelf->uLength + 1) == VECTOR_FAIL) return VECTOR_FAIL;
+        if (vector_expand(vSelf, vSelf->uLength == 0 ? 1 : vSelf->uLength * 2) == VECTOR_FAIL) return VECTOR_FAIL;
 
     memcpy(vSelf->data + (vSelf->uLength * vSelf->uElementSz), pElement, vSelf->uElementSz);
     vSelf->uLength++;
