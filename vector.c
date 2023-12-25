@@ -46,11 +46,26 @@ char vector_append(struct vector* vSelf, void* pElement) {
 
 char vector_pop(struct vector* vSelf, void* out_pElement) {
     if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
-
     if (vSelf->uLength <= 0) return VECTOR_OOB;
 
     vSelf->uLength--;
     memcpy(out_pElement, vSelf->data + (vSelf->uLength * vSelf->uElementSz), vSelf->uElementSz);
+    return VECTOR_SUCCESS;
+}
+
+char vector_at(struct vector* vSelf, unsigned int uIndex, void* out_pElement) {
+    if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
+    if (uIndex >= vSelf->uLength) return VECTOR_OOB;
+
+    memcpy(out_pElement, vSelf->data + (uIndex * vSelf->uElementSz), vSelf->uElementSz);
+    return VECTOR_SUCCESS;
+}
+
+char vector_at_ref(struct vector* vSelf, unsigned int uIndex, void** out_ppElement) {
+    if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
+    if (uIndex >= vSelf->uLength) return VECTOR_OOB;
+
+    *out_ppElement = vSelf->data + (uIndex * vSelf->uElementSz);
     return VECTOR_SUCCESS;
 }
 
