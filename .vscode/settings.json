@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "vector.h": "c",
+        "lexer.h": "c",
+        "stdio.h": "c",
+        "memory.h": "c"
+    }
+}
