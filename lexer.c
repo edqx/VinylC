@@ -36,18 +36,34 @@ char peek_next_char(struct input_reader* irSelf, char* out_pChar) {
     if (assert_input_reader_not_initialized(irSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
 
     if (irSelf->uCaret >= irSelf->uDataLen) return INPUT_READER_OOB;
-    char b = irSelf->pInput[irSelf->uCaret];
-    *out_pChar = b;
+    *out_pChar = irSelf->pInput[irSelf->uCaret];
     return INPUT_READER_SUCCESS;
 }
 
 char advance_next_char(struct input_reader* irSelf, char* out_pChar) {
     if (assert_input_reader_not_initialized(irSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
     
-    char e = peek_next_char(irSelf, out_pChar);
-    if (e != INPUT_READER_SUCCESS) return e;
+    if (out_pChar != 0) {
+        char e = peek_next_char(irSelf, out_pChar);
+        if (e != INPUT_READER_SUCCESS) return e;
+    }
     irSelf->uCaret++;
     return INPUT_READER_SUCCESS;
+}
+
+char advance_next_char_predicate(struct input_reader* irSelf, char* out_pChar, char(*fpPredicate)(char iNext)) {
+    char peekChar;
+    char ePeek = peek_next_char(irSelf, &peekChar);
+    if (ePeek == INPUT_READER_OOB) return INPUT_READER_REJECT;
+    if (ePeek != INPUT_READER_SUCCESS) return ePeek;
+
+    char result = fpPredicate(peekChar);
+    if (result == INPUT_READER_SUCCESS) {
+        char eAdvance = advance_next_char(irSelf, 0);
+        if (eAdvance != INPUT_READER_SUCCESS) return eAdvance;
+        *out_pChar = peekChar;
+    }
+    return result;
 }
 
 char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigned int* iBytesRead, char(*fpPredicate)(char iNext)) {
@@ -56,24 +72,7 @@ char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigne
     if (*ppBuff == 0) return INPUT_READER_FAIL;
     unsigned int i = 0;
     char eAdvance = 0;
-    while ((eAdvance = advance_next_char(irSelf, &(*ppBuff)[i])) == INPUT_READER_SUCCESS) {
-        char ePred = fpPredicate((*ppBuff)[i]);
-        if (ePred == INPUT_READER_REJECT) {
-            irSelf->uCaret--;
-            if (i > 0) {
-                *ppBuff = (char*)realloc(*ppBuff, i + 1);
-                if (*ppBuff == 0) return INPUT_READER_FAIL;
-                (*ppBuff)[i] = '\0';
-                *iBytesRead = i;
-                return INPUT_READER_SUCCESS;
-            } else {
-                free(*ppBuff);
-                return INPUT_READER_REJECT;
-            }
-        } else if (ePred != INPUT_READER_SUCCESS /* predicate function totally failed */) {
-            free(*ppBuff);
-            return ePred;
-        }
+    while ((eAdvance = advance_next_char_predicate(irSelf, &(*ppBuff)[i], fpPredicate)) == INPUT_READER_SUCCESS) {
         i++;
         if (i >= buffSize) {
             buffSize *= 2;
@@ -81,14 +80,19 @@ char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigne
             if (*ppBuff == 0) return INPUT_READER_FAIL;
         }
     }
-    if (eAdvance == INPUT_READER_OOB) {
+    if (eAdvance == INPUT_READER_REJECT) {
+        if (i == 0) { // no input was read
+            free(*ppBuff);
+            return INPUT_READER_REJECT;
+        }
+        
         *ppBuff = (char*)realloc(*ppBuff, i + 1);
         if (*ppBuff == 0) return INPUT_READER_FAIL;
         (*ppBuff)[i] = '\0';
         *iBytesRead = i;
         return INPUT_READER_SUCCESS;
     }
-    free(*ppBuff);
+
     return eAdvance;
 }
 
@@ -199,17 +203,23 @@ char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
     char eOpen = open_read_session(&wholeIdentifierSession);
     if (eOpen != INPUT_READER_SUCCESS) return eOpen;
 
+    char ePeekFirst;
+    char ePeek = peek_next_char(irReader, &ePeekFirst);
+    if (ePeek != INPUT_READER_SUCCESS) {
+        close_and_retreat_read_session(&wholeIdentifierSession);
+        return ePeek;
+    }
+    if (is_digit(ePeekFirst) == INPUT_READER_SUCCESS) {
+        close_and_retreat_read_session(&wholeIdentifierSession);
+        return INPUT_READER_REJECT;
+    }
+
     char* buff = 0;
     unsigned int bytesRead = 0;
     char eReadIdent = allocate_and_read_while(irReader, &buff, &bytesRead, &is_valid_identifier_char);
     if (eReadIdent != INPUT_READER_SUCCESS) {
         close_and_retreat_read_session(&wholeIdentifierSession);
         return eReadIdent;
-    }
-    if (is_digit(buff[0]) == INPUT_READER_SUCCESS) {
-        free(buff);
-        close_and_retreat_read_session(&wholeIdentifierSession);
-        return INPUT_READER_REJECT;
     }
 
     struct file_input_idx_range range = create_file_input_idx_range();
@@ -222,6 +232,9 @@ char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
 
     char eSet = set_token(out_tToken, TOKEN_KIND_IDENT, range, buff);
     if (eSet != INPUT_READER_SUCCESS) return eSet;
+    
+    printf("Read identifier %s\n", buff);
+
     return INPUT_READER_SUCCESS;
 }
 

@@ -29,6 +29,7 @@ char init_input_reader(struct input_reader* irSelf, const char* pFileName, const
 char get_remaining_bytes(struct input_reader* irSelf, unsigned int* out_iRemainingBytes);
 char peek_next_char(struct input_reader* irSelf, char* out_pChar);
 char advance_next_char(struct input_reader* irSelf, char* out_pChar);
+char advance_next_char_predicate(struct input_reader* irSelf, char* out_pChar, char(*fpPredicate)(char iNext));
 char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigned int* iBytesRead, char(*fpPredicate)(char iNext));
 
 struct read_session create_read_session();
