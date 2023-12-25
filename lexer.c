@@ -188,10 +188,12 @@ char get_tokens(const char* pFileName, const char* pInput) {
 }
 
 char read_next_token(struct input_reader* irReader, struct token* out_tToken) {
-    char(*token_readers[3])(struct input_reader* irReader, struct token* out_tToken) = { &read_token_ident, &read_token_number, &read_token_string };
-    // int numReads = sizeof(token_readers)
+    char(*token_readers[5])(struct input_reader* irReader, struct token* out_tToken) =
+        { &read_token_ident, &read_token_number, &read_token_string,
+        &read_token_par_open, &read_token_par_close };
+    int numReads = sizeof(token_readers) / sizeof(token_readers[0]);
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < numReads; i++) {
         char e1 = token_readers[i](irReader, out_tToken);
         if (e1 == INPUT_READER_SUCCESS) return INPUT_READER_SUCCESS;
         if (e1 != INPUT_READER_REJECT) return e1;
@@ -232,6 +234,14 @@ READ_PREDICATE_FUNCTION(is_non_closing_quote) {
     case '\n': return INPUT_READER_UNEXPECTED_END;
     }
     return INPUT_READER_SUCCESS;
+}
+
+READ_PREDICATE_FUNCTION(is_open_parenthesis) {
+    return c == '(' || c == '[' || c == '{' ? INPUT_READER_SUCCESS : INPUT_READER_REJECT;
+}
+
+READ_PREDICATE_FUNCTION(is_close_parenthesis) {
+    return c == ')' || c == ']' || c == '}' ? INPUT_READER_SUCCESS : INPUT_READER_REJECT;
 }
 
 char read_token_ident(struct input_reader* irReader, struct token* out_tToken) {
@@ -401,6 +411,76 @@ char read_token_string(struct input_reader* irReader, struct token* out_tToken) 
     }
 
     char eSet = set_token(out_tToken, TOKEN_KIND_STR, range, buff);
+    if (eSet != INPUT_READER_SUCCESS) return eSet;
+
+    return INPUT_READER_SUCCESS;
+}
+
+char read_token_par_open(struct input_reader* irReader, struct token* out_tToken) {
+    struct read_session wholeParenthesisSession = create_read_session();
+    char eInit = init_read_session(&wholeParenthesisSession, irReader);
+    if (eInit != INPUT_READER_SUCCESS) return eInit;
+    
+    char eOpen = open_read_session(&wholeParenthesisSession);
+    if (eOpen != INPUT_READER_SUCCESS) return eOpen;
+
+    char openParenthesis;
+    char ePeek = advance_next_char_predicate(irReader, &openParenthesis, &is_open_parenthesis, 0);
+    if (ePeek != INPUT_READER_SUCCESS) {
+        close_and_retreat_read_session(&wholeParenthesisSession);
+        return ePeek;
+    }
+    
+    struct file_input_idx_range range = create_file_input_idx_range();
+    char eClose = close_read_session(&wholeParenthesisSession, &range);
+    if (eClose != INPUT_READER_SUCCESS) {
+        close_and_retreat_read_session(&wholeParenthesisSession);
+        return INPUT_READER_FAIL;
+    }
+
+    char* buff = (char*)malloc(2);
+    if (buff == 0) {
+        close_and_retreat_read_session(&wholeParenthesisSession);
+        return INPUT_READER_FAIL;
+    }
+    buff[0] = openParenthesis;
+    buff[1] = '\0';
+    char eSet = set_token(out_tToken, TOKEN_KIND_PAR_OPEN, range, buff);
+    if (eSet != INPUT_READER_SUCCESS) return eSet;
+
+    return INPUT_READER_SUCCESS;
+}
+
+char read_token_par_close(struct input_reader* irReader, struct token* out_tToken) {
+    struct read_session wholeParenthesisSession = create_read_session();
+    char eInit = init_read_session(&wholeParenthesisSession, irReader);
+    if (eInit != INPUT_READER_SUCCESS) return eInit;
+    
+    char eOpen = open_read_session(&wholeParenthesisSession);
+    if (eOpen != INPUT_READER_SUCCESS) return eOpen;
+
+    char closeParenthesis;
+    char ePeek = advance_next_char_predicate(irReader, &closeParenthesis, &is_close_parenthesis, 0);
+    if (ePeek != INPUT_READER_SUCCESS) {
+        close_and_retreat_read_session(&wholeParenthesisSession);
+        return ePeek;
+    }
+    
+    struct file_input_idx_range range = create_file_input_idx_range();
+    char eClose = close_read_session(&wholeParenthesisSession, &range);
+    if (eClose != INPUT_READER_SUCCESS) {
+        close_and_retreat_read_session(&wholeParenthesisSession);
+        return INPUT_READER_FAIL;
+    }
+
+    char* buff = (char*)malloc(2);
+    if (buff == 0) {
+        close_and_retreat_read_session(&wholeParenthesisSession);
+        return INPUT_READER_FAIL;
+    }
+    buff[0] = closeParenthesis;
+    buff[1] = '\0';
+    char eSet = set_token(out_tToken, TOKEN_KIND_PAR_CLOSE, range, buff);
     if (eSet != INPUT_READER_SUCCESS) return eSet;
 
     return INPUT_READER_SUCCESS;

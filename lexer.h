@@ -49,10 +49,11 @@ char close_and_retreat_read_session(struct read_session* rsSelf);
 #define TOKEN_KIND_STR (char)2
 #define TOKEN_KIND_NUMBER (char)3
 #define TOKEN_KIND_PAR_OPEN (char)4
-#define TOKEN_KIND_PAR_CLOSE (char)4
-#define TOKEN_KIND_ACCESSOR (char)5
+#define TOKEN_KIND_PAR_CLOSE (char)5
+#define TOKEN_KIND_ACCESSOR (char)6
 #define TOKEN_KIND_ASSIGNMENT (char)7
 #define TOKEN_KIND_OPERATOR (char)8
+#define TOKEN_KIND_SPLIT (char) 9
 
 struct token {
     char iKind;
@@ -76,5 +77,5 @@ char read_token_ident(struct input_reader* irReader, struct token* out_tToken);
 char read_token_number_decimal(struct input_reader* irReader, char* pNumberStrBuff, unsigned int iNumberBytesRead, struct file_input_idx_range* fiirDecimalRange);
 char read_token_number(struct input_reader* irReader, struct token* out_tToken);
 char read_token_string(struct input_reader* irReader, struct token* out_tToken);
-char read_par_open(struct input_reader* irReader, struct token* out_tToken);
-char read_par_close(struct input_reader* irReader, struct token* out_tToken);
+char read_token_par_open(struct input_reader* irReader, struct token* out_tToken);
+char read_token_par_close(struct input_reader* irReader, struct token* out_tToken);
