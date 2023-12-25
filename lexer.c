@@ -127,7 +127,7 @@ char allocate_and_read_while(struct input_reader* irSelf, char** ppBuff, unsigne
 
 char allocate_and_read_many_chars(struct input_reader* irSelf, char** out_pChar, char* pChars, int iNumChars) {
     if (assert_input_reader_not_initialized(irSelf) == INPUT_READER_SUCCESS) return INPUT_READER_NOT_INITIALIZED;
-    if (irSelf->uCaret >= irSelf->uDataLen - (iNumChars - 1)) return INPUT_READER_OOB;
+    if (irSelf->uCaret >= irSelf->uDataLen - (iNumChars - 1)) return INPUT_READER_REJECT;
 
     const char* base = &irSelf->pInput[irSelf->uCaret];
     if (memcmp(base, pChars, iNumChars) == 0) {
@@ -559,11 +559,11 @@ READ_TOKEN_FUNCTION(operator) {
 }
 
 READ_TOKEN_FUNCTION(separator) {
-    const char* separatorSet[] = { "==", ">=", "<=", "+", "-", "*", "/", "%" };
+    const char* separatorSet[] = { "," };
     return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_SEPARATOR, separatorSet, sizeof(separatorSet) / sizeof(const char*));
 }
 
 READ_TOKEN_FUNCTION(reference) {
     const char* referenceSet[] = { "@" };
-    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_SEPARATOR, referenceSet, sizeof(referenceSet) / sizeof(const char*));
+    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_REFERENCE, referenceSet, sizeof(referenceSet) / sizeof(const char*));
 }

@@ -1,24 +1,19 @@
 #include "vector.h"
 #include "lexer.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 int main(int argc, char** argv) {
-    struct vector someVec = create_vector();
-    init_vector(&someVec, 4, sizeof(int));
+    FILE* file = fopen(argv[1], "r");
+    fseek(file, 0, SEEK_END); 
+    int size = ftell(file);
+    fseek(file, 0, SEEK_SET);
 
-    int a = 5;
-    vector_append(&someVec, &a);
-    vector_append(&someVec, &a);
-    int b = 6;
-    vector_append(&someVec, &b);
+    char* fileBuffer = (char*)malloc(size + 1);
+    fread(fileBuffer, 1, size, file);
+    fileBuffer[size] = '\0';
 
-    int out1, out2, out3;
-    vector_pop(&someVec, &out1);
-    vector_pop(&someVec, &out2);
-    vector_pop(&someVec, &out3);
-
-    const char* myProgram = "\"hello\" two three four 3 + 2";
-    get_tokens("hello.vinyl", myProgram);
+    char ret = get_tokens("hello.vinyl", fileBuffer);
 
     return 0;
 }
