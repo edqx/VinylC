@@ -1,3 +1,8 @@
+#ifndef LEXER_H
+#define LEXER_H
+
+#include "vector.h"
+
 #define INPUT_READER_SUCCESS (char)0
 #define INPUT_READER_FAIL (char)1
 #define INPUT_READER_ALREADY_INITIALIZED (char)2
@@ -70,16 +75,14 @@ char close_and_retreat_read_session(struct read_session* rsSelf);
 #define TOKEN_KIND_NUMBER (char)3
 #define TOKEN_KIND_PAR_OPEN (char)4
 #define TOKEN_KIND_PAR_CLOSE (char)5
-#define TOKEN_KIND_ACCESSOR (char)6
-#define TOKEN_KIND_ASSIGNMENT (char)7
-#define TOKEN_KIND_OPERATOR (char)8
-#define TOKEN_KIND_SEPARATOR (char)9
-#define TOKEN_KIND_REFERENCE (char)10
+#define TOKEN_KIND_OPERATOR (char)6
+#define TOKEN_KIND_SEPARATOR (char)7
+#define TOKEN_KIND_REFERENCE (char)8
 
 struct token {
     char iKind;
     struct file_input_idx_range fiirFileRange;
-    const char* content;
+    const char* pContent;
 };
 
 
@@ -91,7 +94,7 @@ READ_PREDICATE_FUNCTION(is_non_closing_quote);
 
 struct token create_token();
 char set_token(struct token* tSelf, char iKind, struct file_input_idx_range fiirFileRange, const char* content);
-char get_tokens(const char* pFileName, const char* pInput);
+char get_tokens(const char* pFileName, const char* pInput, struct vector* defect_list, struct vector* token_list);
 
 #define T_READ_TOKEN_FUNCTION(NAME) char NAME(struct input_reader* irReader, struct lexer_defect* ldDefect, struct token* out_tToken)
 #define READ_TOKEN_FUNCTION(NAME) T_READ_TOKEN_FUNCTION(read_token_##NAME)
@@ -103,8 +106,8 @@ READ_TOKEN_FUNCTION(number);
 READ_TOKEN_FUNCTION(string);
 READ_TOKEN_FUNCTION(par_open);
 READ_TOKEN_FUNCTION(par_close);
-READ_TOKEN_FUNCTION(accessor);
-READ_TOKEN_FUNCTION(assignment);
 READ_TOKEN_FUNCTION(operator);
 READ_TOKEN_FUNCTION(separator);
 READ_TOKEN_FUNCTION(reference);
+
+#endif // LEXER_H

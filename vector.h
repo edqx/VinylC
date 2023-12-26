@@ -1,3 +1,5 @@
+#ifndef VECTOR_H
+#define VECTOR_H
 
 #define VECTOR_SUCCESS (char)0
 #define VECTOR_FAIL (char)1
@@ -21,3 +23,5 @@ char vector_pop(struct vector* vSelf, void* out_pElement);
 char vector_at(struct vector* vSelf, unsigned int uIndex, void* out_pElement);
 char vector_at_ref(struct vector* vSelf, unsigned int uIndex, void** out_ppElement);
 char deinit_vector(struct vector* vSelf);
+
+#endif // VECTOR_H

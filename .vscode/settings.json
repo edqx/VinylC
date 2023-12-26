@@ -3,7 +3,8 @@
         "vector.h": "c",
         "lexer.h": "c",
         "stdio.h": "c",
-        "memory.h": "c"
+        "memory.h": "c",
+        "ast.h": "c"
     },
-    "editor.fontSize": 10
+    "editor.fontSize": 11
 }

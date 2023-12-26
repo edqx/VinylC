@@ -200,23 +200,17 @@ struct token create_token() {
 char set_token(struct token* tSelf, char iKind, struct file_input_idx_range fiirFileRange, const char* content) {
     tSelf->iKind = iKind;
     tSelf->fiirFileRange = fiirFileRange;
-    tSelf->content = content;
+    tSelf->pContent = content;
     return INPUT_READER_SUCCESS;
 }
 
-char get_tokens(const char* pFileName, const char* pInput) {
+char get_tokens(const char* pFileName, const char* pInput, struct vector* defect_list, struct vector* token_list) {
     struct input_reader reader = create_input_reader();
     init_input_reader(&reader, pFileName, pInput);
 
     struct read_session session1 = create_read_session();
     init_read_session(&session1, &reader);
     open_read_session(&session1);
-
-    struct vector defect_list = create_vector();
-    init_vector(&defect_list, 500, sizeof(struct lexer_defect));
-
-    struct vector token_list = create_vector();
-    init_vector(&token_list, 500, sizeof(struct token));
 
     int remainingBytes;
     while (get_remaining_bytes(&reader, &remainingBytes) == INPUT_READER_SUCCESS && remainingBytes > 0) {
@@ -227,17 +221,17 @@ char get_tokens(const char* pFileName, const char* pInput) {
         char eReadNextToken = read_token_next(&reader, &defect, &token);
         if (eReadNextToken == INPUT_READER_DEFECT) {
             if (assert_lexer_defect_not_raised(&defect) == INPUT_READER_SUCCESS) return INPUT_READER_EXPECTED_DEFECT_NOT_RAISED;
-            vector_append(&defect_list, &defect);
+            vector_append(defect_list, &defect);
             continue;
         }
         if (eReadNextToken == INPUT_READER_REJECT) continue;
         if (eReadNextToken != INPUT_READER_SUCCESS) return eReadNextToken;
-        vector_append(&token_list, &token);
+        vector_append(token_list, &token);
     }
 
-    for (unsigned int i = 0; i < defect_list.uLength; i++) {
+    for (unsigned int i = 0; i < defect_list->uLength; i++) {
         struct lexer_defect* defect;
-        char eGetDefect = vector_at_ref(&defect_list, i, (void**)&defect);
+        char eGetDefect = vector_at_ref(defect_list, i, (void**)&defect);
         if (eGetDefect != INPUT_READER_SUCCESS) return eGetDefect;
 
         printf("Lexer defect (%i) @ %i: ", defect->uDefectCode, defect->uStartIdx);
@@ -251,12 +245,12 @@ char get_tokens(const char* pFileName, const char* pInput) {
         }
     }
 
-    for (unsigned int i = 0; i < token_list.uLength; i++) {
+    for (unsigned int i = 0; i < token_list->uLength; i++) {
         struct token* token;
-        char eGetToken = vector_at_ref(&token_list, i, (void**)&token);
+        char eGetToken = vector_at_ref(token_list, i, (void**)&token);
         if (eGetToken != INPUT_READER_SUCCESS) return eGetToken;
 
-        printf("Token (%i): %s\n", token->iKind, token->content);
+        printf("Token (%i): %s\n", token->iKind, token->pContent);
     }
 
     return INPUT_READER_SUCCESS;
@@ -266,8 +260,7 @@ READ_TOKEN_FUNCTION(next) {
     T_READ_TOKEN_FUNCTION((*token_readers[])) =
         { &read_token_ident, &read_token_number, &read_token_string,
         &read_token_par_open, &read_token_par_close, &read_token_operator,
-        &read_token_assignment, &read_token_accessor, &read_token_separator,
-        &read_token_reference };
+        &read_token_separator, &read_token_reference };
     int numReads = sizeof(token_readers) / sizeof(token_readers[0]);
 
     for (int i = 0; i < numReads; i++) {
@@ -543,18 +536,8 @@ READ_TOKEN_FUNCTION(par_close) {
     return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_PAR_CLOSE, parenthesisSet, sizeof(parenthesisSet) / sizeof(const char*));
 }
 
-READ_TOKEN_FUNCTION(accessor) {
-    const char* accessorSet[] = { ".", "->" };
-    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_ACCESSOR, accessorSet, sizeof(accessorSet) / sizeof(const char*));
-}
-
-READ_TOKEN_FUNCTION(assignment) {
-    const char* assignmentSet[] = { "=" };
-    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_ASSIGNMENT, assignmentSet, sizeof(assignmentSet) / sizeof(const char*));
-}
-
 READ_TOKEN_FUNCTION(operator) {
-    const char* operatorSet[] = { "==", ">=", "<=", "+", "-", "*", "/", "%", "&" };
+    const char* operatorSet[] = { ".", "->", "==", "=", ">=", "<=", "+", "-", "*", "/", "%", "&&", "||", "&" };
     return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_OPERATOR, operatorSet, sizeof(operatorSet) / sizeof(const char*));
 }
 

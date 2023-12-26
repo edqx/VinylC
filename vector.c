@@ -49,7 +49,7 @@ char vector_pop(struct vector* vSelf, void* out_pElement) {
     if (vSelf->uLength <= 0) return VECTOR_OOB;
 
     vSelf->uLength--;
-    memcpy(out_pElement, vSelf->data + (vSelf->uLength * vSelf->uElementSz), vSelf->uElementSz);
+    if (out_pElement != 0) memcpy(out_pElement, vSelf->data + (vSelf->uLength * vSelf->uElementSz), vSelf->uElementSz);
     return VECTOR_SUCCESS;
 }
 
@@ -74,4 +74,5 @@ char deinit_vector(struct vector* vSelf) {
 
     free(vSelf->data);
     vSelf->data = 0;
+    return VECTOR_SUCCESS;
 }
