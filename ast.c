@@ -99,14 +99,14 @@ char allocate_ast_literal_from_token(struct token* tToken, struct ast_literal** 
     return AST_NODE_SUCCESS;
 }
 
-char get_operator_precedence(struct token* tToken) {
+char get_operator_precedence(struct token* tToken, char bIsUnary) {
     switch (tToken->pContent[0]) {
         case '.':
             return AST_OPERATOR_PRECEDENCE_ACCESS;
         case '-':
             switch (tToken->pContent[1]) {
             case '\0': // "-"
-                return AST_OPERATOR_PRECEDENCE_ADD;
+                return bIsUnary ? AST_OPERATOR_PRECEDENCE_UNARY_PREF : AST_OPERATOR_PRECEDENCE_ADD;
             case '>': // "->"
                 return AST_OPERATOR_PRECEDENCE_ACCESS;
             }
@@ -157,49 +157,87 @@ char get_operator_precedence(struct token* tToken) {
     return 0;
 }
 
+char eval_stack_pop_operator(struct vector* vEvalStack, struct operator_pending_pop tOperatorPending, struct ast_node** out_anNode) {
+    struct ast_elem* right = 0;
+    struct ast_elem* left = 0;
+    char ePopRight = vector_pop(vEvalStack, (void*)&right);
+    if (ePopRight != VECTOR_SUCCESS) return ePopRight;
+    if (!tOperatorPending.bIsUnary) {
+        char ePopLeft = vector_pop(vEvalStack, (void*)&left);
+        if (ePopLeft != VECTOR_SUCCESS) return ePopLeft;
+    }
+
+    struct ast_node* operatorNode = 0;
+    char eNewNode = new_ast_node(&operatorNode);
+    if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+    char eInitNode = init_ast_node(operatorNode, AST_NODE_KIND_BINARY_OPER, tOperatorPending.bIsUnary ? 2 : 3);
+    if (eInitNode != AST_NODE_SUCCESS) {
+        free(operatorNode);
+        return eInitNode;
+    }
+
+    struct ast_literal* operatorLiteral = 0;
+    char eNewLiteral = new_ast_literal(&operatorLiteral);
+    if (eNewLiteral != AST_NODE_SUCCESS) {
+        free(operatorNode);
+        return eNewLiteral;
+    }
+    char eInitliteral = init_ast_literal(operatorLiteral, AST_LITERAL_KIND_OPER, tOperatorPending.tOperator->pContent);
+    if (eInitliteral != AST_NODE_SUCCESS) {
+        free(operatorNode);
+        free(operatorLiteral);
+        return eInitliteral;
+    }
+
+    char r1 = replace_empty_node(operatorNode, (struct ast_elem*)operatorLiteral, 0);
+    if (r1 != AST_NODE_SUCCESS) {
+        free(operatorNode);
+        free(operatorLiteral);
+        return r1;
+    }
+    if (!tOperatorPending.bIsUnary) {
+        char r2 = replace_empty_node(operatorNode, left, 1);
+        if (r2 != AST_NODE_SUCCESS) {
+            free(operatorNode);
+            free(operatorLiteral);
+            return r2;
+        }
+    }
+    char r3 = replace_empty_node(operatorNode, right, tOperatorPending.bIsUnary ? 1 : 2);
+    if (r3 != AST_NODE_SUCCESS) {
+        free(operatorNode);
+        free(operatorLiteral);
+        return r3;
+    }
+
+    vector_append(vEvalStack, (void*)&operatorNode);
+
+    *out_anNode = operatorNode;
+    return AST_NODE_SUCCESS;
+}
+
 char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack) {
     while (vOperatorStack->uLength > 0) { // shunting-yard, we'll pop until this token precedence is greater
-        struct token* lastOperator = 0;
-        char eLastOp = vector_at(vOperatorStack, vOperatorStack->uLength - 1, &lastOperator);
+        struct operator_pending_pop lastOperatorPending;
+        char eLastOp = vector_at(vOperatorStack, vOperatorStack->uLength - 1, (void*)&lastOperatorPending);
         if (eLastOp != VECTOR_SUCCESS) return AST_NODE_FAIL;
 
-        char p = get_operator_precedence(lastOperator);
+        char p = get_operator_precedence(lastOperatorPending.tOperator, lastOperatorPending.bIsUnary);
 
         if (iPrecedence > p) break;
         char ePop = vector_pop(vOperatorStack, 0);
         if (ePop != VECTOR_SUCCESS) return ePop;
 
-        struct ast_elem* right = 0;
-        struct ast_elem* left = 0;
-        char ePopRight = vector_pop(vEvalStack, (void*)&right);
-        if (ePopRight != VECTOR_SUCCESS) return ePopRight;
-        char ePopLeft = vector_pop(vEvalStack, (void*)&left);
-        if (ePopLeft != VECTOR_SUCCESS) return ePopLeft;
-
-        struct ast_node* operatorNode = 0;
-        char eNewNode = new_ast_node(&operatorNode);
-        if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
-        char eInitNode = init_ast_node(operatorNode, AST_NODE_KIND_BIN_OPER, 3);
-        if (eInitNode != AST_NODE_SUCCESS) return eInitNode;
-
-        struct ast_literal* operatorLiteral = 0;
-        char eNewLiteral = new_ast_literal(&operatorLiteral);
-        if (eNewLiteral != AST_NODE_SUCCESS) return eNewLiteral;
-        char eInitliteral = init_ast_literal(operatorLiteral, AST_LITERAL_KIND_OPER, lastOperator->pContent);
-        if (eInitliteral != AST_NODE_SUCCESS) return eInitliteral;
-
-        replace_empty_node(operatorNode, (struct ast_elem*)operatorLiteral, 0);
-        replace_empty_node(operatorNode, left, 1);
-        replace_empty_node(operatorNode, right, 2);
-
-        vector_append(vEvalStack, (void*)&operatorNode);
+        struct ast_node* operatorNode;
+        char eStackPop = eval_stack_pop_operator(vEvalStack, lastOperatorPending, &operatorNode);
+        if (eStackPop != AST_NODE_SUCCESS) return eStackPop;
     }
     return AST_NODE_SUCCESS;
 }
 
 char build_stmt_list_node(struct token** ptTokens, unsigned int uNumTokens, struct ast_node** out_anStmtListNode) {
     struct vector operatorStack = create_vector();
-    char eInit = init_vector(&operatorStack, 512, sizeof(struct token*));
+    char eInit = init_vector(&operatorStack, 512, sizeof(struct operator_pending_pop));
     if (eInit != VECTOR_SUCCESS) return AST_NODE_FAIL;
     struct vector evalStack = create_vector();
     char eInit2 = init_vector(&evalStack, 512, sizeof(struct ast_elem*));
@@ -208,6 +246,7 @@ char build_stmt_list_node(struct token** ptTokens, unsigned int uNumTokens, stru
         return AST_NODE_FAIL;
     }
 
+    struct token* lastTransformedToken = 0;
     for (int i = 0; i < uNumTokens; i++) {
         struct token* token = ptTokens[i];
         if (token->iKind == TOKEN_KIND_NUMBER || token->iKind == TOKEN_KIND_STR || token->iKind == TOKEN_KIND_IDENT) {
@@ -215,16 +254,24 @@ char build_stmt_list_node(struct token** ptTokens, unsigned int uNumTokens, stru
             char eAllocAst = allocate_ast_literal_from_token(token, &literal);
             if (eAllocAst != AST_NODE_SUCCESS) return eAllocAst;
 
+            lastTransformedToken = token;
             vector_append(&evalStack, (void*)&literal);
         } else if (token->iKind == TOKEN_KIND_OPERATOR) {
+            char isUnary = lastTransformedToken == 0
+                || lastTransformedToken->iKind == TOKEN_KIND_OPERATOR
+                || lastTransformedToken->iKind == TOKEN_KIND_SEPARATOR;
             if (operatorStack.uLength > 0) {
-                char p = get_operator_precedence(token);
+                char p = get_operator_precedence(token, isUnary);
                 char ePop = pop_greater_precedence(p, &operatorStack, &evalStack);
                 if (ePop != AST_NODE_SUCCESS) return ePop;
             }
 
-            char eAddOp = vector_append(&operatorStack, (void*)&token);
+            struct operator_pending_pop operatorPending;
+            operatorPending.tOperator = token;
+            operatorPending.bIsUnary = isUnary;
+            char eAddOp = vector_append(&operatorStack, (void*)&operatorPending);
             if (eAddOp != VECTOR_SUCCESS) return eAddOp;
+            lastTransformedToken = token;
         }
     }
 

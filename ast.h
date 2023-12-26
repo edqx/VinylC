@@ -16,7 +16,8 @@
 #define AST_NODE_KIND_EMPTY (char)0
 #define AST_NODE_KIND_LITERAL (char)1
 #define AST_NODE_KIND_STMT_LIST (char)2
-#define AST_NODE_KIND_BIN_OPER (char)3
+#define AST_NODE_KIND_BINARY_OPER (char)3
+#define AST_NODE_KIND_UNARY_OPER (char)4
 
 #define AST_LITERAL_KIND_NIL (char)0
 #define AST_LITERAL_KIND_STR (char)1
@@ -68,9 +69,15 @@ char new_ast_literal(struct ast_literal** out_alLiteral);
 char assert_ast_literal_not_initialized(struct ast_literal* alSelf);
 char init_ast_literal(struct ast_literal* alSelf, char iLiteralKind, const char* pContent);
 char get_literal_token_kind(struct token* tToken);
-char get_operator_precedence(struct token* tToken);
+char get_operator_precedence(struct token* tToken, char bIsUnary);
 char allocate_ast_literal_from_token(struct token* tToken, struct ast_literal** out_alLiteral);
 
+struct operator_pending_pop {
+    struct token* tOperator;
+    char bIsUnary;
+};
+
+char eval_stack_pop_operator(struct vector* vEvalStack, struct operator_pending_pop tOperatorPending, struct ast_node** out_anNode);
 char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack);
 char build_stmt_list_node(struct token** ptTokens, unsigned int uNumTokens, struct ast_node** out_anStmtListNode);
 char build_variable_assignment_node(struct token** ptTokens, unsigned int uNumTokens, struct ast_node* out_anNode);
