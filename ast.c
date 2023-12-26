@@ -165,7 +165,7 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
 
         char p = get_operator_precedence(lastOperator);
 
-        if (iPrecedence >= p) break;
+        if (iPrecedence > p) break;
         char ePop = vector_pop(vOperatorStack, 0);
         if (ePop != VECTOR_SUCCESS) return ePop;
 
