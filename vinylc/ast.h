@@ -44,6 +44,7 @@
 #define SYNTAX_ERROR_INVALID_UNARY_OPERATOR (short)1
 #define SYNTAX_ERROR_EXPECTED_OPERATOR (short)2
 #define SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT (short)3
+#define SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND (short)4
 
 struct syntax_error {
     short uErrorCode;
@@ -60,6 +61,10 @@ struct syntax_error_expected_operator_context {
 
 struct syntax_error_var_stmt_expected_assignment_context {
     struct ast_elem* aeElem;
+};
+
+struct syntax_error_missing_right_hand_operand_context {
+    struct token* tToken;
 };
 
 #define INSTANCE_SYNTAX_ERROR_CONTEXT(VARNAME, CONTEXT_STRUCT) struct CONTEXT_STRUCT* VARNAME = (struct CONTEXT_STRUCT*)malloc(sizeof(struct CONTEXT_STRUCT))
@@ -91,6 +96,7 @@ void recursive_get_ast_range(struct ast_elem* aeRootElem, struct file_input_idx_
 SYNTAX_ERROR_PRINT_FUNCTION(invalid_unary_operator, syntax_error_invalid_unary_operator_context);
 SYNTAX_ERROR_PRINT_FUNCTION(expected_operator, syntax_error_expected_operator_context);
 SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_assignment, syntax_error_var_stmt_expected_assignment_context);
+SYNTAX_ERROR_PRINT_FUNCTION(missing_right_hand_operand, syntax_error_missing_right_hand_operand_context);
 
 struct ast_node create_ast_node();
 char new_ast_node(struct ast_node** out_anNode);

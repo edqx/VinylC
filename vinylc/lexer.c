@@ -301,7 +301,7 @@ READ_PREDICATE_FUNCTION(is_non_closing_quote) {
         if (*escapeParity == 0) return INPUT_READER_REJECT;
         *escapeParity = 0;
         return INPUT_READER_SUCCESS;
-    case '\n':
+    case '\n':;
         char eRaise = raise_lexer_defect(ldDefect, LEXER_DEFECT_UNEXPECTED_NEWLINE);
         if (eRaise != INPUT_READER_SUCCESS) return eRaise;
         return INPUT_READER_DEFECT;
