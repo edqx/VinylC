@@ -247,7 +247,8 @@ AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer, out_aeInitializer) AST_ELE
 char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
     struct ast_elem* left = 0;
-    char ePopRight = vector_pop(vEvalStack, (void*)&right);
+    printf("is operator %s unary? %i\n", tOperatorToken->pContent, bIsUnary);
+    char ePopRight = vector_pop(vEvalStack, (void*)&right); // todo: check right-hand exists and error otherwise
     if (ePopRight != VECTOR_SUCCESS) return ePopRight;
     if (!bIsUnary) {
         char ePopLeft = vector_pop(vEvalStack, (void*)&left);
