@@ -221,13 +221,25 @@ char get_tokens(const char* pFileName, const char* pInput, struct vector* defect
         char eReadNextToken = read_token_next(&reader, &defect, &token);
         if (eReadNextToken == INPUT_READER_DEFECT) {
             if (assert_lexer_defect_not_raised(&defect) == INPUT_READER_SUCCESS) return INPUT_READER_EXPECTED_DEFECT_NOT_RAISED;
-            vector_append(defect_list, &defect);
+            char eAddDefect = vector_append(defect_list, &defect);
+            if (eAddDefect != VECTOR_SUCCESS) return eAddDefect;
             continue;
         }
         if (eReadNextToken == INPUT_READER_REJECT) continue;
         if (eReadNextToken != INPUT_READER_SUCCESS) return eReadNextToken;
-        vector_append(token_list, &token);
+        char eAddToken = vector_append(token_list, &token);
+        if (eAddToken != VECTOR_SUCCESS) return eAddToken;
     }
+    
+    struct token eof_token = create_token();
+    struct file_input_idx_range eof_range = create_file_input_idx_range();
+    eof_range.uStartIdx = reader.uCaret;
+    eof_range.uEndIdx = reader.uCaret;
+    char eInitEof = set_token(&eof_token, TOKEN_KIND_EOF, eof_range, "");
+    if (eInitEof != INPUT_READER_SUCCESS) return eInitEof;
+
+    char eAddEof = vector_append(token_list, &eof_token);
+    if (eAddEof != VECTOR_SUCCESS) return eAddEof;
 
     for (unsigned int i = 0; i < defect_list->uLength; i++) {
         struct lexer_defect* defect;

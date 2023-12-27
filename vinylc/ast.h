@@ -13,6 +13,8 @@
 #define AST_NODE_NOT_EMPTY_NODE (char)6
 #define AST_NODE_OOB (char)7
 #define AST_NODE_WRONG_NODE_KIND (char)8
+#define AST_NODE_INVALID_PARENTHESIS (char)9
+#define AST_NODE_STOP (char)10
 
 #define AST_NODE_KIND_EMPTY (char)0
 #define AST_NODE_KIND_LITERAL (char)1
@@ -20,6 +22,7 @@
 #define AST_NODE_KIND_BINARY_OPER (char)3
 #define AST_NODE_KIND_UNARY_OPER (char)4
 #define AST_NODE_KIND_VAR_DECL_STMT (char)5
+#define AST_NODE_KIND_PAR (char)6
 
 #define AST_LITERAL_KIND_NIL (char)0
 #define AST_LITERAL_KIND_STR (char)1
@@ -146,11 +149,20 @@ AST_ELEM_GET_FUNCTION(unary_operator, left_operand, out_aeOperand);
 AST_ELEM_GET_LITERAL_FUNCTION(var_decl_stmt, var_name, out_pVarName);
 AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer, out_aeInitializer);
 
+char get_matching_close_parenthesis(char cOpenPar);
+
 char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode);
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode);
 char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors);
+
+#define CONTINUE_AST_PREDICATE_FUNCTION(NAME) char NAME(struct token* pToken,struct vector* vSyntaxErrors, void* pCtx)
+
+CONTINUE_AST_PREDICATE_FUNCTION(is_eof_token);
+CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis);
+
 char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack);
-char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors, unsigned int uNumTokens, struct ast_node** out_anStmtListNode);
+char build_expression_list(struct token*** pptToken, struct vector* vSyntaxErrors, CONTINUE_AST_PREDICATE_FUNCTION((*fpContinuePredicate)), void *pCtx, struct vector* out_vExpressionList);
+char build_stmt_list_node(struct token** ptToken, struct vector* vSyntaxErrors, struct ast_node** out_anStmtListNode);
 
 void print_ast_string(struct ast_elem* anRootElem, int indent);
 

@@ -70,14 +70,15 @@ char close_read_session(struct read_session* rsSelf, struct file_input_idx_range
 char close_and_retreat_read_session(struct read_session* rsSelf);
 
 #define TOKEN_KIND_EMPTY (char)0
-#define TOKEN_KIND_IDENT (char)1
-#define TOKEN_KIND_STR (char)2
-#define TOKEN_KIND_NUMBER (char)3
-#define TOKEN_KIND_PAR_OPEN (char)4
-#define TOKEN_KIND_PAR_CLOSE (char)5
-#define TOKEN_KIND_OPERATOR (char)6
-#define TOKEN_KIND_SEPARATOR (char)7
-#define TOKEN_KIND_REFERENCE (char)8
+#define TOKEN_KIND_EOF (char)1
+#define TOKEN_KIND_IDENT (char)2
+#define TOKEN_KIND_STR (char)3
+#define TOKEN_KIND_NUMBER (char)4
+#define TOKEN_KIND_PAR_OPEN (char)5
+#define TOKEN_KIND_PAR_CLOSE (char)6
+#define TOKEN_KIND_OPERATOR (char)7
+#define TOKEN_KIND_SEPARATOR (char)8
+#define TOKEN_KIND_REFERENCE (char)9
 
 struct token {
     char iKind;

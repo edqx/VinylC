@@ -20,7 +20,8 @@ int main(int argc, char** argv) {
     struct vector tokenList = create_vector();
     init_vector(&tokenList, 512, sizeof(struct token));
 
-    char ret = get_tokens("hello.vinyl", fileBuffer, &defectList, &tokenList);
+    char eToken = get_tokens("hello.vinyl", fileBuffer, &defectList, &tokenList);
+    printf("Return %i for tokens\n", eToken);
 
     struct token** tokens = malloc(tokenList.uLength * sizeof(struct token*));
     for (int i = 0; i < tokenList.uLength; i++) {
@@ -31,7 +32,8 @@ int main(int argc, char** argv) {
     init_vector(&syntaxErrorList, 512, sizeof(struct syntax_error));
 
     struct ast_node* ast_node = 0;
-    build_stmt_list_node(tokens, &syntaxErrorList, tokenList.uLength, &ast_node);
+    char eBuild = build_stmt_list_node(tokens, &syntaxErrorList, &ast_node);
+    printf("Return %i for statement list build\n", eBuild);
 
     for (int i = 0; i < syntaxErrorList.uLength; i++) {
         struct syntax_error err;

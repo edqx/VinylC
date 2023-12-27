@@ -268,6 +268,15 @@ AST_ELEM_GET_FUNCTION(unary_operator, left_operand, out_aeOperand) AST_ELEM_GET_
 AST_ELEM_GET_LITERAL_FUNCTION(var_decl_stmt, var_name, out_pVarName) AST_ELEM_GET_LITERAL_FUNCTION_IMPL(AST_NODE_KIND_VAR_DECL_STMT, 1, out_pVarName);
 AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer, out_aeInitializer) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_VAR_DECL_STMT, 2, out_aeInitializer);
 
+char get_matching_close_parenthesis(char cOpenPar) {
+    switch (cOpenPar) {
+    case '(': return ')';
+    case '{': return '}';
+    case '[': return ']';
+    }
+    return '\0';
+}
+
 char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
     struct ast_elem* left = 0;
@@ -476,6 +485,20 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
     return AST_NODE_SUCCESS;
 }
 
+CONTINUE_AST_PREDICATE_FUNCTION(is_eof_token) {
+    return pToken->iKind == TOKEN_KIND_EOF ? AST_NODE_STOP : AST_NODE_SUCCESS;
+}
+
+CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis) {
+    if (pToken->iKind == TOKEN_KIND_EOF) {
+        
+    }
+
+    if (pToken->iKind != TOKEN_KIND_PAR_CLOSE) return AST_NODE_SUCCESS;
+    char endParenthesis = *(char*)pCtx;
+    return pToken->pContent[0] == endParenthesis ? AST_NODE_STOP : AST_NODE_SUCCESS;
+}
+
 char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack) {
     char eConcat = vector_append_concat(vExpressionList, vEvalStack);
     if (eConcat != VECTOR_SUCCESS) return eConcat;
@@ -486,9 +509,8 @@ char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOp
     return AST_NODE_SUCCESS;
 }
 
-char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors, unsigned int uNumTokens, struct ast_node** out_anStmtListNode) {
-    struct vector expressionList = create_vector();
-    char eInit = init_vector(&expressionList, 512, sizeof(struct ast_elem*));
+char build_expression_list(struct token*** pptToken, struct vector* vSyntaxErrors, CONTINUE_AST_PREDICATE_FUNCTION((*fpContinuePredicate)), void* pCtx, struct vector* out_vExpressionList) {
+    char eInit = init_vector(out_vExpressionList, 512, sizeof(struct ast_elem*));
     if (eInit != VECTOR_SUCCESS) return AST_NODE_FAIL;
     struct vector operatorStack = create_vector();
     char eInit2 = init_vector(&operatorStack, 512, sizeof(struct operator_pending_pop));
@@ -501,18 +523,28 @@ char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors,
     }
 
     char lastTransformedTokenValidOperand = 0;
-    for (int i = 0; i < uNumTokens; i++) {
-        struct token* token = ptTokens[i];
+    char eContinuePredicate = 0;
+    for (; (eContinuePredicate = fpContinuePredicate(**pptToken, vSyntaxErrors, pCtx)) == AST_NODE_SUCCESS; (*pptToken)++) {
+        struct token* token = **pptToken;
         if (token->iKind == TOKEN_KIND_SEPARATOR) {
             if (operatorStack.uLength > 0) {
                 char ePop = pop_greater_precedence(0, &operatorStack, &evalStack, vSyntaxErrors);
-                if (ePop != AST_NODE_SUCCESS) return ePop;
+                if (ePop != AST_NODE_SUCCESS) {
+                    deinit_vector(&operatorStack);
+                    deinit_vector(&evalStack);
+                    return ePop;
+                }
             }
 
             if (evalStack.uLength > 0) {
-                char eFlush = flush_to_expression_list(&expressionList, &operatorStack, &evalStack);
-                if (eFlush != AST_NODE_SUCCESS) return eFlush;
+                char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack);
+                if (eFlush != AST_NODE_SUCCESS) {
+                    deinit_vector(&operatorStack);
+                    deinit_vector(&evalStack);
+                    return eFlush;
+                }
             }
+            lastTransformedTokenValidOperand = 0;
             continue;
         }
         if (token->iKind == TOKEN_KIND_IDENT) {
@@ -520,19 +552,31 @@ char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors,
             if (parseMode != OPERATOR_PARSE_MODE_NIL) {
                 if (operatorStack.uLength > 0) {
                     char ePop = pop_greater_precedence(0, &operatorStack, &evalStack, vSyntaxErrors);
-                    if (ePop != AST_NODE_SUCCESS) return ePop;
+                    if (ePop != AST_NODE_SUCCESS) {
+                        deinit_vector(&operatorStack);
+                        deinit_vector(&evalStack);
+                        return ePop;
+                    }
                 }
 
                 if (evalStack.uLength > 0) {
-                    char eFlush = flush_to_expression_list(&expressionList, &operatorStack, &evalStack);
-                    if (eFlush != AST_NODE_SUCCESS) return eFlush;
+                    char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack);
+                    if (eFlush != AST_NODE_SUCCESS) {
+                        deinit_vector(&operatorStack);
+                        deinit_vector(&evalStack);
+                        return eFlush;
+                    }
                 }
                 
                 struct operator_pending_pop operatorPending;
                 operatorPending.tToken = token;
                 operatorPending.iOperatorParseMode = parseMode;
                 char eAddOp = vector_append(&operatorStack, (void*)&operatorPending);
-                if (eAddOp != VECTOR_SUCCESS) return eAddOp;
+                if (eAddOp != VECTOR_SUCCESS) {
+                    deinit_vector(&operatorStack);
+                    deinit_vector(&evalStack);
+                    return eAddOp;
+                }
                 lastTransformedTokenValidOperand = 0;
                 continue;
             }
@@ -549,26 +593,83 @@ char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors,
 
             struct ast_literal* literal = 0;
             char eAllocAst = allocate_ast_literal_from_token(token, &literal);
-            if (eAllocAst != AST_NODE_SUCCESS) return eAllocAst;
+            if (eAllocAst != AST_NODE_SUCCESS) {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return eAllocAst;
+            }
 
             lastTransformedTokenValidOperand = 1;
-            vector_append(&evalStack, (void*)&literal);
+            char eAddLit = vector_append(&evalStack, (void*)&literal);
+            if (eAddLit != VECTOR_SUCCESS) {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return eAddLit;
+            }
             break;
         case TOKEN_KIND_OPERATOR:
             if (operatorStack.uLength > 0) {
                 char p = get_operator_precedence(token, lastTransformedTokenValidOperand);
                 char ePop = pop_greater_precedence(p, &operatorStack, &evalStack, vSyntaxErrors);
-                if (ePop != AST_NODE_SUCCESS) return ePop;
+                if (ePop != AST_NODE_SUCCESS) {
+                    deinit_vector(&operatorStack);
+                    deinit_vector(&evalStack);
+                    return ePop;
+                }
             }
 
             struct operator_pending_pop operatorPending;
             operatorPending.tToken = token;
             operatorPending.iOperatorParseMode = lastTransformedTokenValidOperand ? OPERATOR_PARSE_MODE_BINARY : OPERATOR_PARSE_MODE_UNARY;
             char eAddOp = vector_append(&operatorStack, (void*)&operatorPending);
-            if (eAddOp != VECTOR_SUCCESS) return eAddOp;
+            if (eAddOp != VECTOR_SUCCESS) {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return eAddOp;
+            }
             lastTransformedTokenValidOperand = 0;
             break;
+        case TOKEN_KIND_PAR_OPEN:
+            struct vector expressionList = create_vector();
+            char closingPar = get_matching_close_parenthesis(token->pContent[0]);
+            if (closingPar == '\0') {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return AST_NODE_INVALID_PARENTHESIS;
+            }
+            (*pptToken)++;
+            char eRecurseBuildExpressions = build_expression_list(pptToken, vSyntaxErrors, is_close_parenthesis, &closingPar, &expressionList);
+            if (eRecurseBuildExpressions != AST_NODE_SUCCESS) return eRecurseBuildExpressions;
+            struct ast_node* parNode;
+            char eNewNode = new_ast_node(&parNode);
+            if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+            char eInitNode = init_ast_node(parNode, AST_NODE_KIND_PAR, expressionList.uLength);
+            if (eInitNode != AST_NODE_SUCCESS) {
+                free(parNode);
+                return eInitNode;
+            }
+            for (int i = 0; i < expressionList.uLength; i++) {
+                struct ast_elem* evalElem;
+                vector_at(&expressionList, i, (void*)&evalElem);
+                char eReplace = replace_empty_node(parNode, evalElem, i);
+                if (eReplace != AST_NODE_SUCCESS) return eReplace;
+            }
+            deinit_vector(&expressionList);
+            char eAddPar = vector_append(&evalStack, (void*)&parNode);
+            if (eAddPar != VECTOR_SUCCESS) {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return eAddPar;
+            }
+            lastTransformedTokenValidOperand = 1;
+            break;
         }
+    }
+
+    if (eContinuePredicate != AST_NODE_STOP) {
+        deinit_vector(&operatorStack);
+        deinit_vector(&evalStack);
+        return eContinuePredicate;
     }
 
     if (operatorStack.uLength > 0) {
@@ -577,9 +678,18 @@ char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors,
     }
 
     if (evalStack.uLength > 0) {
-        char eFlush = flush_to_expression_list(&expressionList, &operatorStack, &evalStack);
+        char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack);
         if (eFlush != AST_NODE_SUCCESS) return eFlush;
     }
+
+    deinit_vector(&operatorStack);
+    deinit_vector(&evalStack);
+    return AST_NODE_SUCCESS;
+}
+
+char build_stmt_list_node(struct token** ptToken, struct vector* vSyntaxErrors, struct ast_node** out_anStmtListNode) {
+    struct vector expressionList = create_vector();
+    char eBuildExpressionList = build_expression_list(&ptToken, vSyntaxErrors, is_eof_token, 0, &expressionList);
 
     char eNewNode = new_ast_node(out_anStmtListNode);
     if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
@@ -595,8 +705,7 @@ char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors,
         if (eReplace != AST_NODE_SUCCESS) return eReplace;
     }
 
-    deinit_vector(&operatorStack);
-    deinit_vector(&evalStack);
+    deinit_vector(&expressionList);
 }
 
 void print_ast_string(struct ast_elem* anRootElem, int indent) {
