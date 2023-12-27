@@ -27,45 +27,23 @@
 #define AST_LITERAL_KIND_IDENT (char)3
 #define AST_LITERAL_KIND_OPER (char)4
 
-#define AST_PRECEDENCE_NIL (char)0
-#define AST_PRECEDENCE_STATEMENT (char)1
-#define AST_PRECEDENCE_OPERATOR_ASSIGN (char)2
-#define AST_PRECEDENCE_OPERATOR_LOGIC_OR (char)3
-#define AST_PRECEDENCE_OPERATOR_LOGIC_AND (char)4
-#define AST_PRECEDENCE_OPERATOR_EQUAL (char)5
-#define AST_PRECEDENCE_OPERATOR_COMPARE (char)6
-#define AST_PRECEDENCE_OPERATOR_CONCAT (char)7
-#define AST_PRECEDENCE_OPERATOR_ADD (char)8
-#define AST_PRECEDENCE_OPERATOR_MUL (char)9
-#define AST_PRECEDENCE_OPERATOR_UNARY_PREF (char)10
-#define AST_PRECEDENCE_OPERATOR_ACCESS (char)11
+struct syntax_error {
+    short uErrorCode;
+    void* pSpecificCtx;
+};
 
 #define SYNTAX_ERROR_NIL (short)0
 #define SYNTAX_ERROR_INVALID_UNARY_OPERATOR (short)1
 #define SYNTAX_ERROR_EXPECTED_OPERATOR (short)2
 #define SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT (short)3
 #define SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND (short)4
+#define SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER (short)5
 
-struct syntax_error {
-    short uErrorCode;
-    void* pSpecificCtx;
-};
-
-struct syntax_error_invalid_unary_operator_context {
-    struct token* tToken;
-};
-
-struct syntax_error_expected_operator_context {
-    struct token* tToken;
-};
-
-struct syntax_error_var_stmt_expected_assignment_context {
-    struct ast_elem* aeElem;
-};
-
-struct syntax_error_missing_right_hand_operand_context {
-    struct token* tToken;
-};
+struct syntax_error_invalid_unary_operator_context { struct token* tToken; };
+struct syntax_error_expected_operator_context { struct token* tToken; };
+struct syntax_error_var_stmt_expected_assignment_context { struct token* tVarToken; struct ast_elem* aeOperator; };
+struct syntax_error_missing_right_hand_operand_context { struct token* tToken; };
+struct syntax_error_var_stmt_expected_identifier_context { struct token* tVarToken; struct ast_elem* aeIdentifierElem; };
 
 #define INSTANCE_SYNTAX_ERROR_CONTEXT(VARNAME, CONTEXT_STRUCT) struct CONTEXT_STRUCT* VARNAME = (struct CONTEXT_STRUCT*)malloc(sizeof(struct CONTEXT_STRUCT))
 #define REGISTER_SYNTAX_ERROR(SYNTAX_ERRORS_STORE, VARNAME, ERROR_CODE, CONTEXT_VARNAME) struct syntax_error VARNAME = create_error(ERROR_CODE, CONTEXT_VARNAME);\
@@ -119,6 +97,19 @@ char can_operator_be_unary(struct token* tToken);
 #define OPERATOR_PARSE_MODE_VAR_STMT (char)3
 #define OPERATOR_PARSE_MODE_PROC_STMT (char)4
 #define OPERATOR_PARSE_MODE_TYPE_STMT (char)5
+
+#define AST_PRECEDENCE_NIL (char)0
+#define AST_PRECEDENCE_STATEMENT (char)1
+#define AST_PRECEDENCE_OPERATOR_ASSIGN (char)2
+#define AST_PRECEDENCE_OPERATOR_LOGIC_OR (char)3
+#define AST_PRECEDENCE_OPERATOR_LOGIC_AND (char)4
+#define AST_PRECEDENCE_OPERATOR_EQUAL (char)5
+#define AST_PRECEDENCE_OPERATOR_COMPARE (char)6
+#define AST_PRECEDENCE_OPERATOR_CONCAT (char)7
+#define AST_PRECEDENCE_OPERATOR_ADD (char)8
+#define AST_PRECEDENCE_OPERATOR_MUL (char)9
+#define AST_PRECEDENCE_OPERATOR_UNARY_PREF (char)10
+#define AST_PRECEDENCE_OPERATOR_ACCESS (char)11
 
 char get_operator_precedence(struct token* tToken, char iOperatorParseMode);
 char get_keyword_operator_parse_mode(const char* pIdentStr);

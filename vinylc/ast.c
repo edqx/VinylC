@@ -52,26 +52,26 @@ void recursive_get_ast_range(struct ast_elem* aeRootElem, struct file_input_idx_
 }
 
 SYNTAX_ERROR_PRINT_FUNCTION(invalid_unary_operator, syntax_error_invalid_unary_operator_context) {
-    printf("\x1b[91m[ERROR]: Invalid unary operator: %s at %i-%i\x1b[0m\n", pContext->tToken->pContent, pContext->tToken->fiirFileRange.uStartIdx, pContext->tToken->fiirFileRange.uEndIdx);
+    printf("\x1b[91m[ERROR]: Invalid unary operator: %s at %i..%i\x1b[0m\n", pContext->tToken->pContent, pContext->tToken->fiirFileRange.uStartIdx, pContext->tToken->fiirFileRange.uEndIdx);
 }
 
 SYNTAX_ERROR_PRINT_FUNCTION(expected_operator, syntax_error_expected_operator_context) {
-    printf("\x1b[91m[ERROR]: Expected operator: %s at %i-%i\x1b[0m\n", pContext->tToken->pContent, pContext->tToken->fiirFileRange.uStartIdx, pContext->tToken->fiirFileRange.uEndIdx);
+    printf("\x1b[91m[ERROR]: Expected operator: %s at %i..%i\x1b[0m\n", pContext->tToken->pContent, pContext->tToken->fiirFileRange.uStartIdx, pContext->tToken->fiirFileRange.uEndIdx);
 }
 
 SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_assignment, syntax_error_var_stmt_expected_assignment_context) {
     struct file_input_idx_range* range = 0;
-    recursive_get_ast_range(pContext->aeElem, &range);
+    if (pContext->aeOperator != 0) recursive_get_ast_range(pContext->aeOperator, &range);
     if (range == 0) {
-        printf("\x1b[91m[ERROR]: Expected assignment\x1b[0m\n");
+        printf("\x1b[91m[ERROR]: Expected assignment at %i\x1b[0m\n", pContext->tVarToken->fiirFileRange.uEndIdx);
     } else {
-        printf("\x1b[91m[ERROR]: Expected assignment at %i-%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
+        printf("\x1b[91m[ERROR]: Expected assignment at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
     }
     free(range);
 }
 
 SYNTAX_ERROR_PRINT_FUNCTION(missing_right_hand_operand, syntax_error_missing_right_hand_operand_context) {
-    printf("\x1b[91m[ERROR]: Expected right-hand operand for %s at %i-%i\x1b[0m\n", pContext->tToken->pContent, pContext->tToken->fiirFileRange.uStartIdx, pContext->tToken->fiirFileRange.uEndIdx);
+    printf("\x1b[91m[ERROR]: Expected right-hand operand for %s at %i..%i\x1b[0m\n", pContext->tToken->pContent, pContext->tToken->fiirFileRange.uStartIdx, pContext->tToken->fiirFileRange.uEndIdx);
 }
 
 struct ast_node create_ast_node() {
@@ -326,18 +326,24 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
 }
 
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode) {
-    struct ast_elem* right;
-    char ePopRight = vector_pop(vEvalStack, (void*)&right);
-    if (ePopRight != VECTOR_SUCCESS) return ePopRight;
+    struct ast_elem* right = 0;
+    if (vEvalStack->uLength != 0) {
+        char ePopRight = vector_pop(vEvalStack, (void*)&right);
+        if (ePopRight != VECTOR_SUCCESS) return ePopRight;
+    }
 
     struct ast_node* assignment = (struct ast_node*)right;
     const char* operator = 0;
-    char eGetBinaryOperator = get_binary_operator_operator(right, &operator);
-    if (eGetBinaryOperator != AST_NODE_SUCCESS || strcmp(operator, "=") != 0) {
+    char eGetBinaryOperator = AST_NODE_SUCCESS;
+    if (right != 0) {
+        eGetBinaryOperator = get_binary_operator_operator(right, &operator);
+    }
+    if (right == 0 || eGetBinaryOperator != AST_NODE_SUCCESS || strcmp(operator, "=") != 0) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_var_stmt_expected_assignment_context);
-        context->aeElem = right;
+        context->tVarToken = tVarToken;
+        context->aeOperator = right;
         REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT, context);
-        return eGetBinaryOperator;
+        if (eGetBinaryOperator != AST_NODE_SUCCESS && eGetBinaryOperator != AST_NODE_WRONG_NODE_KIND) return eGetBinaryOperator;
     }
     
     struct ast_node* varDeclStmtNode = 0;
@@ -364,21 +370,25 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
     }
 
     struct ast_elem* leftOperand = 0;
-    char eGetLeftOperand = get_binary_operator_left_operand((struct ast_elem*)assignment, &leftOperand);
-    if (eGetLeftOperand != AST_NODE_SUCCESS) {
-        free(varDeclStmtNode);
-        free(varTypeLiteral);
-        return eGetLeftOperand;
+    if (assignment != 0 && eGetBinaryOperator == AST_NODE_SUCCESS /* with invalid syntax, we might not even have a binary operator at all */) {
+        char eGetLeftOperand = get_binary_operator_left_operand((struct ast_elem*)assignment, &leftOperand);
+        if (eGetLeftOperand != AST_NODE_SUCCESS) {
+            free(varDeclStmtNode);
+            free(varTypeLiteral);
+            return eGetLeftOperand;
+        }
     }
 
     // todo: check left operand is just identifier
 
     struct ast_elem* rightOperand = 0;
-    char eGetRightOperand = get_binary_operator_right_operand((struct ast_elem*)assignment, &rightOperand);
-    if (eGetRightOperand != AST_NODE_SUCCESS) {
-        free(varDeclStmtNode);
-        free(varTypeLiteral);
-        return eGetRightOperand;
+    if (assignment != 0 && eGetBinaryOperator == AST_NODE_SUCCESS) {
+        char eGetRightOperand = get_binary_operator_right_operand((struct ast_elem*)assignment, &rightOperand);
+        if (eGetRightOperand != AST_NODE_SUCCESS) {
+            free(varDeclStmtNode);
+            free(varTypeLiteral);
+            return eGetRightOperand;
+        }
     }
     
     char eReplaceVarType = replace_empty_node(varDeclStmtNode, (struct ast_elem*)varTypeLiteral, 0);
@@ -388,18 +398,22 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
         return eReplaceVarType;
     }
 
-    char eReplaceVarName = replace_empty_node(varDeclStmtNode, leftOperand, 1);
-    if (eReplaceVarName != AST_NODE_SUCCESS) {
-        free(varDeclStmtNode);
-        free(varTypeLiteral);
-        return eReplaceVarName;
+    if (leftOperand != 0) {
+        char eReplaceVarName = replace_empty_node(varDeclStmtNode, leftOperand, 1);
+        if (eReplaceVarName != AST_NODE_SUCCESS) {
+            free(varDeclStmtNode);
+            free(varTypeLiteral);
+            return eReplaceVarName;
+        }
     }
 
-    char eReplaceInitializer = replace_empty_node(varDeclStmtNode, rightOperand, 2);
-    if (eReplaceInitializer != AST_NODE_SUCCESS) {
-        free(varDeclStmtNode);
-        free(varTypeLiteral);
-        return eReplaceInitializer;
+    if (rightOperand != 0) {
+        char eReplaceInitializer = replace_empty_node(varDeclStmtNode, rightOperand, 2);
+        if (eReplaceInitializer != AST_NODE_SUCCESS) {
+            free(varDeclStmtNode);
+            free(varTypeLiteral);
+            return eReplaceInitializer;
+        }
     }
 
     vector_append(vEvalStack, (void*)&varDeclStmtNode);
@@ -519,7 +533,6 @@ char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors,
             vector_append(&evalStack, (void*)&literal);
             break;
         case TOKEN_KIND_OPERATOR:
-            printf("Got operator %s, is unary %i\n", token->pContent, !lastTransformedTokenValidOperand);
             if (operatorStack.uLength > 0) {
                 char p = get_operator_precedence(token, lastTransformedTokenValidOperand);
                 char ePop = pop_greater_precedence(p, &operatorStack, &evalStack, vSyntaxErrors);

@@ -1,4 +1,4 @@
 SOURCES := $(wildcard vinylc/*.c)
 
 default:
-	gcc -o test.exe $(SOURCES)
+	gcc -ggdb -O0 -o test.exe $(SOURCES)
