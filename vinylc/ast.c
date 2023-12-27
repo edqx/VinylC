@@ -611,7 +611,11 @@ void print_ast_string(struct ast_elem* anRootElem, int indent) {
         break;
     case AST_NODE_KIND_LITERAL:;
         struct ast_literal* literal = (struct ast_literal*)anRootElem;
-        printf("AST LITERAL: %s (%i)\n", literal->tToken->pContent, literal->iLiteralKind);
+        if (literal->iLiteralKind == AST_LITERAL_KIND_STR) {
+            printf("AST LITERAL: \"%s\" (%i)\n", literal->tToken->pContent, literal->iLiteralKind);
+        } else {
+            printf("AST LITERAL: %s (%i)\n", literal->tToken->pContent, literal->iLiteralKind);
+        }
         break;
     default:
         struct ast_node* node = (struct ast_node*)anRootElem;
