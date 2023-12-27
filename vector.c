@@ -44,6 +44,26 @@ char vector_append(struct vector* vSelf, void* pElement) {
     return VECTOR_SUCCESS;
 }
 
+char vector_append_concat(struct vector* vSelf, struct vector* vOther) {
+    if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
+    if(vector_assert_not_initialized(vOther) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
+    if (vSelf->uElementSz != vOther->uElementSz) return VECTOR_DIFFERENT_SIZE;
+    if (vOther->uLength == 0) return VECTOR_SUCCESS;
+
+    if (vSelf->uLength + vOther->uLength > vSelf->uCapacity)
+        if (vector_expand(vSelf, vSelf->uLength + vOther->uLength) == VECTOR_FAIL) return VECTOR_FAIL;
+
+    memcpy(vSelf->data + (vSelf->uLength * vSelf->uElementSz), vOther->data, vOther->uElementSz * vOther->uLength);
+    vSelf->uLength += vOther->uLength;
+    return VECTOR_SUCCESS;
+}
+
+char vector_clear(struct vector* vSelf) {
+    if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
+    vSelf->uLength = 0;
+    return VECTOR_SUCCESS;
+}
+
 char vector_pop(struct vector* vSelf, void* out_pElement) {
     if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
     if (vSelf->uLength <= 0) return VECTOR_OOB;
