@@ -43,7 +43,7 @@ struct syntax_error_invalid_unary_operator_context { struct token* tToken; };
 struct syntax_error_expected_operator_context { struct token* tToken; };
 struct syntax_error_var_stmt_expected_assignment_context { struct token* tVarToken; struct ast_elem* aeOperator; };
 struct syntax_error_missing_right_hand_operand_context { struct token* tToken; };
-struct syntax_error_var_stmt_expected_identifier_context { struct token* tVarToken; struct ast_elem* aeIdentifierElem; };
+struct syntax_error_var_stmt_expected_identifier_context { struct token* tVarToken; struct ast_elem* aeLeftHandElem; };
 
 #define INSTANCE_SYNTAX_ERROR_CONTEXT(VARNAME, CONTEXT_STRUCT) struct CONTEXT_STRUCT* VARNAME = (struct CONTEXT_STRUCT*)malloc(sizeof(struct CONTEXT_STRUCT))
 #define REGISTER_SYNTAX_ERROR(SYNTAX_ERRORS_STORE, VARNAME, ERROR_CODE, CONTEXT_VARNAME) struct syntax_error VARNAME = create_error(ERROR_CODE, CONTEXT_VARNAME);\
@@ -75,6 +75,7 @@ SYNTAX_ERROR_PRINT_FUNCTION(invalid_unary_operator, syntax_error_invalid_unary_o
 SYNTAX_ERROR_PRINT_FUNCTION(expected_operator, syntax_error_expected_operator_context);
 SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_assignment, syntax_error_var_stmt_expected_assignment_context);
 SYNTAX_ERROR_PRINT_FUNCTION(missing_right_hand_operand, syntax_error_missing_right_hand_operand_context);
+SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_identifier, syntax_error_var_stmt_expected_identifier_context);
 
 struct ast_node create_ast_node();
 char new_ast_node(struct ast_node** out_anNode);

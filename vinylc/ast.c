@@ -27,6 +27,12 @@ void print_error(const char* pFileContent, struct syntax_error seSyntaxError) {
     case SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND:
         SYNTAX_ERROR_PRINT(pFileContent, missing_right_hand_operand, syntax_error_missing_right_hand_operand_context, seSyntaxError);
         break;
+    case SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER:
+        SYNTAX_ERROR_PRINT(pFileContent, var_stmt_expected_identifier, syntax_error_var_stmt_expected_identifier_context, seSyntaxError);
+        break;
+    default:
+        printf("\x1b[91m[ERROR]: %i <not printed>\x1b[0m\n", seSyntaxError.uErrorCode);
+        break;
     }
 }
 
@@ -67,11 +73,22 @@ SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_assignment, syntax_error_var_stmt_
     } else {
         printf("\x1b[91m[ERROR]: Expected assignment at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
     }
-    free(range);
+    if (range != 0) free(range);
 }
 
 SYNTAX_ERROR_PRINT_FUNCTION(missing_right_hand_operand, syntax_error_missing_right_hand_operand_context) {
     printf("\x1b[91m[ERROR]: Expected right-hand operand for %s at %i..%i\x1b[0m\n", pContext->tToken->pContent, pContext->tToken->fiirFileRange.uStartIdx, pContext->tToken->fiirFileRange.uEndIdx);
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_identifier, syntax_error_var_stmt_expected_identifier_context) {
+    struct file_input_idx_range* range = 0;
+    if (pContext->aeLeftHandElem != 0) recursive_get_ast_range(pContext->aeLeftHandElem, &range);
+    if (range == 0) {
+        printf("\x1b[91m[ERROR]: Expected identifier at %i\x1b[0m\n", pContext->tVarToken->fiirFileRange.uEndIdx);
+    } else {
+        printf("\x1b[91m[ERROR]: Expected identifier at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
+    }
+    if (range != 0) free(range);
 }
 
 struct ast_node create_ast_node() {
@@ -379,7 +396,12 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
         }
     }
 
-    // todo: check left operand is just identifier
+    if (leftOperand != 0 && (leftOperand->iKind != AST_NODE_KIND_LITERAL || ((struct ast_literal*)leftOperand)->iLiteralKind != AST_LITERAL_KIND_IDENT)) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_var_stmt_expected_identifier_context);
+        context->tVarToken = tVarToken;
+        context->aeLeftHandElem = leftOperand;
+        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER, context);
+    }
 
     struct ast_elem* rightOperand = 0;
     if (assignment != 0 && eGetBinaryOperator == AST_NODE_SUCCESS) {
