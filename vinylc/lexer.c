@@ -542,7 +542,7 @@ READ_TOKEN_FUNCTION(operator) {
 }
 
 READ_TOKEN_FUNCTION(separator) {
-    const char* separatorSet[] = { "," };
+    const char* separatorSet[] = { ",", ";" };
     return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_SEPARATOR, separatorSet, sizeof(separatorSet) / sizeof(const char*));
 }
 
