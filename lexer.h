@@ -85,7 +85,6 @@ struct token {
     const char* pContent;
 };
 
-
 READ_PREDICATE_FUNCTION(is_digit);
 READ_PREDICATE_FUNCTION(is_valid_identifier_char);
 READ_PREDICATE_FUNCTION(is_quote);

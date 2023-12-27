@@ -4,6 +4,27 @@
 #include <string.h>
 #include <stdio.h>
 
+struct syntax_error create_error(short uErrorCode, void* pSpecificContext) {
+    struct syntax_error out = {};
+    out.uErrorCode = uErrorCode;
+    out.pSpecificCtx = pSpecificContext;
+    return out;
+}
+
+void print_error(const char* pFileContent, struct syntax_error seSyntaxError) {
+    switch (seSyntaxError.uErrorCode) {
+    case SYNTAX_ERROR_NIL:
+        break;
+    case SYNTAX_ERROR_INVALID_UNARY_OPERATOR:
+        SYNTAX_ERROR_PRINT(pFileContent, invalid_unary_operator, syntax_error_invalid_unary_operator_context, seSyntaxError);
+        break;
+    }
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(invalid_unary_operator, syntax_error_invalid_unary_operator_context) {
+    printf("\x1b[91m[ERROR]: Invalid unary operator: %s at %i-%i\x1b[0m\n", pContext->tToken->pContent, pContext->tToken->fiirFileRange.uStartIdx, pContext->tToken->fiirFileRange.uEndIdx);
+}
+
 struct ast_node create_ast_node() {
     struct ast_node out = {};
     return out;
@@ -99,6 +120,10 @@ char allocate_ast_literal_from_token(struct token* tToken, struct ast_literal** 
     return AST_NODE_SUCCESS;
 }
 
+char can_operator_be_unary(struct token* tToken) {
+    return tToken->pContent[0] == '+' || (tToken->pContent[0] == '-' && tToken->pContent[1] == '\0');
+}
+
 char get_operator_precedence(struct token* tToken, char bIsUnary) {
     switch (tToken->pContent[0]) {
         case '.':
@@ -157,7 +182,7 @@ char get_operator_precedence(struct token* tToken, char bIsUnary) {
     return 0;
 }
 
-char eval_stack_pop_operator(struct vector* vEvalStack, struct operator_pending_pop tOperatorPending, struct ast_node** out_anNode) {
+char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct operator_pending_pop tOperatorPending, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
     struct ast_elem* left = 0;
     char ePopRight = vector_pop(vEvalStack, (void*)&right);
@@ -212,11 +237,17 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct operator_pending_
 
     vector_append(vEvalStack, (void*)&operatorNode);
 
+    if (tOperatorPending.bIsUnary && !can_operator_be_unary(tOperatorPending.tOperator)) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_invalid_unary_operator_context);
+        context->tToken = tOperatorPending.tOperator;
+        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_UNARY_OPERATOR, context);
+    }
+
     *out_anNode = operatorNode;
     return AST_NODE_SUCCESS;
 }
 
-char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack) {
+char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors) {
     while (vOperatorStack->uLength > 0) { // shunting-yard, we'll pop until this token precedence is greater
         struct operator_pending_pop lastOperatorPending;
         char eLastOp = vector_at(vOperatorStack, vOperatorStack->uLength - 1, (void*)&lastOperatorPending);
@@ -229,13 +260,13 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
         if (ePop != VECTOR_SUCCESS) return ePop;
 
         struct ast_node* operatorNode;
-        char eStackPop = eval_stack_pop_operator(vEvalStack, lastOperatorPending, &operatorNode);
+        char eStackPop = eval_stack_pop_operator(vEvalStack, vSyntaxErrors, lastOperatorPending, &operatorNode);
         if (eStackPop != AST_NODE_SUCCESS) return eStackPop;
     }
     return AST_NODE_SUCCESS;
 }
 
-char build_stmt_list_node(struct token** ptTokens, unsigned int uNumTokens, struct ast_node** out_anStmtListNode) {
+char build_stmt_list_node(struct token** ptTokens, struct vector* vSyntaxErrors, unsigned int uNumTokens, struct ast_node** out_anStmtListNode) {
     struct vector operatorStack = create_vector();
     char eInit = init_vector(&operatorStack, 512, sizeof(struct operator_pending_pop));
     if (eInit != VECTOR_SUCCESS) return AST_NODE_FAIL;
@@ -262,7 +293,7 @@ char build_stmt_list_node(struct token** ptTokens, unsigned int uNumTokens, stru
                 || lastTransformedToken->iKind == TOKEN_KIND_SEPARATOR;
             if (operatorStack.uLength > 0) {
                 char p = get_operator_precedence(token, isUnary);
-                char ePop = pop_greater_precedence(p, &operatorStack, &evalStack);
+                char ePop = pop_greater_precedence(p, &operatorStack, &evalStack, vSyntaxErrors);
                 if (ePop != AST_NODE_SUCCESS) return ePop;
             }
 
@@ -276,7 +307,7 @@ char build_stmt_list_node(struct token** ptTokens, unsigned int uNumTokens, stru
     }
 
     if (operatorStack.uLength > 0) {
-        char ePop = pop_greater_precedence(0, &operatorStack, &evalStack);
+        char ePop = pop_greater_precedence(0, &operatorStack, &evalStack, vSyntaxErrors);
         if (ePop != AST_NODE_SUCCESS) return ePop;
     }
 

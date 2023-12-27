@@ -14,21 +14,30 @@ int main(int argc, char** argv) {
     fread(fileBuffer, 1, size, file);
     fileBuffer[size] = '\0';
 
-    struct vector defect_list = create_vector();
-    init_vector(&defect_list, 512, sizeof(struct lexer_defect));
+    struct vector defectList = create_vector();
+    init_vector(&defectList, 512, sizeof(struct lexer_defect));
 
-    struct vector token_list = create_vector();
-    init_vector(&token_list, 512, sizeof(struct token));
+    struct vector tokenList = create_vector();
+    init_vector(&tokenList, 512, sizeof(struct token));
 
-    char ret = get_tokens("hello.vinyl", fileBuffer, &defect_list, &token_list);
+    char ret = get_tokens("hello.vinyl", fileBuffer, &defectList, &tokenList);
 
-    struct token** tokens = malloc(token_list.uLength * sizeof(struct token*));
-    for (int i = 0; i < token_list.uLength; i++) {
-        vector_at_ref(&token_list, i, (void**)&tokens[i]);
+    struct token** tokens = malloc(tokenList.uLength * sizeof(struct token*));
+    for (int i = 0; i < tokenList.uLength; i++) {
+        vector_at_ref(&tokenList, i, (void**)&tokens[i]);
     }
 
+    struct vector syntaxErrorList = create_vector();
+    init_vector(&syntaxErrorList, 512, sizeof(struct syntax_error));
+
     struct ast_node* ast_node = 0;
-    build_stmt_list_node(tokens, token_list.uLength, &ast_node);
+    build_stmt_list_node(tokens, &syntaxErrorList, tokenList.uLength, &ast_node);
+
+    for (int i = 0; i < syntaxErrorList.uLength; i++) {
+        struct syntax_error err;
+        vector_at(&syntaxErrorList, i, &err);
+        print_error(fileBuffer, err);
+    }
 
     print_ast_string((struct ast_elem*)ast_node, 0);
 
