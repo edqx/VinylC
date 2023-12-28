@@ -15,6 +15,7 @@
 #define AST_NODE_WRONG_NODE_KIND (char)8
 #define AST_NODE_INVALID_PARENTHESIS (char)9
 #define AST_NODE_STOP (char)10
+#define AST_NODE_UNDEFINED_FUNCTION_CALL (char)11
 
 #define AST_NODE_KIND_EMPTY (char)0
 #define AST_NODE_KIND_LITERAL (char)1
@@ -23,6 +24,7 @@
 #define AST_NODE_KIND_UNARY_OPER (char)4
 #define AST_NODE_KIND_VAR_DECL_STMT (char)5
 #define AST_NODE_KIND_PAR (char)6
+#define AST_NODE_KIND_CALL (char)7
 
 #define AST_LITERAL_KIND_NIL (char)0
 #define AST_LITERAL_KIND_STR (char)1
@@ -132,39 +134,43 @@ struct operator_pending_pop {
     char iOperatorParseMode;
 };
 
-#define AST_ELEM_GET_FUNCTION(NODE_KIND_NAME, SON_NAME, OUT_NAME) char get_##NODE_KIND_NAME##_##SON_NAME(struct ast_elem* aeElem, struct ast_elem** OUT_NAME)
-#define AST_ELEM_GET_FUNCTION_IMPL(NODE_KIND, SON_IDX, OUT_NAME) {\
+#define AST_ELEM_GET_FUNCTION(NODE_KIND_NAME, SON_NAME) char get_##NODE_KIND_NAME##_##SON_NAME(struct ast_elem* aeElem, struct ast_elem** out_aeElem)
+#define AST_ELEM_GET_FUNCTION_IMPL(NODE_KIND, SON_IDX) {\
     if (aeElem->iKind != NODE_KIND) return AST_NODE_WRONG_NODE_KIND;\
     if (assert_ast_node_not_initialized((struct ast_node*)aeElem) == AST_NODE_SUCCESS) return AST_NODE_NOT_INITIALIZED;\
-    *OUT_NAME = ((struct ast_node*)aeElem)->ppSons[SON_IDX];\
+    *out_aeElem = ((struct ast_node*)aeElem)->ppSons[SON_IDX];\
     return AST_NODE_SUCCESS;\
 } 
 
-#define AST_ELEM_GET_LITERAL_FUNCTION(NODE_KIND_NAME, SON_NAME, OUT_NAME) char get_##NODE_KIND_NAME##_##SON_NAME(struct ast_elem* aeElem, const char** OUT_NAME)
-#define AST_ELEM_GET_LITERAL_FUNCTION_IMPL(NODE_KIND, SON_IDX, OUT_NAME) {\
+#define AST_ELEM_GET_LITERAL_FUNCTION(NODE_KIND_NAME, SON_NAME) char get_##NODE_KIND_NAME##_##SON_NAME(struct ast_elem* aeElem, const char** out_alLiteral)
+#define AST_ELEM_GET_LITERAL_FUNCTION_IMPL(NODE_KIND, SON_IDX) {\
     if (aeElem->iKind != NODE_KIND) return AST_NODE_WRONG_NODE_KIND;\
     if (assert_ast_node_not_initialized((struct ast_node*)aeElem) == AST_NODE_SUCCESS) return AST_NODE_NOT_INITIALIZED;\
-    *OUT_NAME = ((struct ast_literal*)(((struct ast_node*)aeElem)->ppSons[SON_IDX]))->tToken->pContent;\
+    *out_alLiteral = ((struct ast_literal*)(((struct ast_node*)aeElem)->ppSons[SON_IDX]))->tToken->pContent;\
     return AST_NODE_SUCCESS;\
 } 
 
-AST_ELEM_GET_LITERAL_FUNCTION(binary_operator, operator, out_pOperator);
-AST_ELEM_GET_FUNCTION(binary_operator, left_operand, out_aeLeftOperand);
-AST_ELEM_GET_FUNCTION(binary_operator, right_operand, out_aeRightOperand);
+AST_ELEM_GET_LITERAL_FUNCTION(binary_operator, operator);
+AST_ELEM_GET_FUNCTION(binary_operator, left_operand);
+AST_ELEM_GET_FUNCTION(binary_operator, right_operand);
 
-AST_ELEM_GET_LITERAL_FUNCTION(unary_operator, operator, out_pOperator);
-AST_ELEM_GET_FUNCTION(unary_operator, left_operand, out_aeOperand);
+AST_ELEM_GET_LITERAL_FUNCTION(unary_operator, operator);
+AST_ELEM_GET_FUNCTION(unary_operator, left_operand);
 
-AST_ELEM_GET_LITERAL_FUNCTION(var_decl_stmt, var_name, out_pVarName);
-AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer, out_aeInitializer);
+AST_ELEM_GET_LITERAL_FUNCTION(var_decl_stmt, var_name);
+AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer);
+
+AST_ELEM_GET_FUNCTION(call, function_ref);
+AST_ELEM_GET_FUNCTION(call, params);
 
 char get_matching_close_parenthesis(char cOpenPar);
 
 char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode);
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode);
+char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode);
 char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors);
 
-#define CONTINUE_AST_PREDICATE_FUNCTION(NAME) char NAME(struct token* pToken,struct vector* vSyntaxErrors, void* pCtx)
+#define CONTINUE_AST_PREDICATE_FUNCTION(NAME) char NAME(struct token* pToken, struct vector* vSyntaxErrors, void* pCtx)
 
 struct close_parenthesis_context {
     struct token* tOpenParenthesis;

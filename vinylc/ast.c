@@ -285,15 +285,18 @@ char get_keyword_operator_parse_mode(const char* pIdentStr) {
     return OPERATOR_PARSE_MODE_NIL;
 }
 
-AST_ELEM_GET_LITERAL_FUNCTION(binary_operator, operator, out_pOperator) AST_ELEM_GET_LITERAL_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 0, out_pOperator);
-AST_ELEM_GET_FUNCTION(binary_operator, left_operand, out_aeLeftOperand) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 1, out_aeLeftOperand);
-AST_ELEM_GET_FUNCTION(binary_operator, right_operand, out_aeRightOperand) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 2, out_aeRightOperand);
+AST_ELEM_GET_LITERAL_FUNCTION(binary_operator, operator) AST_ELEM_GET_LITERAL_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 0);
+AST_ELEM_GET_FUNCTION(binary_operator, left_operand) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 1);
+AST_ELEM_GET_FUNCTION(binary_operator, right_operand) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 2);
 
-AST_ELEM_GET_LITERAL_FUNCTION(unary_operator, operator, out_pOperator) AST_ELEM_GET_LITERAL_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 0, out_pOperator);
-AST_ELEM_GET_FUNCTION(unary_operator, left_operand, out_aeOperand) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 1, out_aeOperand);
+AST_ELEM_GET_LITERAL_FUNCTION(unary_operator, operator) AST_ELEM_GET_LITERAL_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 0);
+AST_ELEM_GET_FUNCTION(unary_operator, left_operand) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_BINARY_OPER, 1);
 
-AST_ELEM_GET_LITERAL_FUNCTION(var_decl_stmt, var_name, out_pVarName) AST_ELEM_GET_LITERAL_FUNCTION_IMPL(AST_NODE_KIND_VAR_DECL_STMT, 1, out_pVarName);
-AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer, out_aeInitializer) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_VAR_DECL_STMT, 2, out_aeInitializer);
+AST_ELEM_GET_LITERAL_FUNCTION(var_decl_stmt, var_name) AST_ELEM_GET_LITERAL_FUNCTION_IMPL(AST_NODE_KIND_VAR_DECL_STMT, 1);
+AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_VAR_DECL_STMT, 2);
+
+AST_ELEM_GET_FUNCTION(call, function_ref) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_CALL, 0);
+AST_ELEM_GET_FUNCTION(call, params) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_CALL, 1);
 
 char get_matching_close_parenthesis(char cOpenPar) {
     switch (cOpenPar) {
@@ -366,7 +369,12 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
         }
     }
 
-    vector_append(vEvalStack, (void*)&operatorNode);
+    char eAppend = vector_append(vEvalStack, (void*)&operatorNode);
+    if (eAppend != VECTOR_SUCCESS) {
+        free(operatorNode);
+        free(operatorLiteral);
+        return eAppend;
+    }
 
     if (bIsUnary && !can_operator_be_unary(tOperatorToken)) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_invalid_unary_operator_context);
@@ -474,9 +482,49 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
         }
     }
 
-    vector_append(vEvalStack, (void*)&varDeclStmtNode);
+    char eAppend = vector_append(vEvalStack, (void*)&varDeclStmtNode);
+    if (eAppend != VECTOR_SUCCESS) {
+        free(varDeclStmtNode);
+        free(varTypeLiteral);
+        return eAppend;
+    }
     *out_anNode = varDeclStmtNode;
+    return AST_NODE_SUCCESS;
+}
 
+char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode) {
+    struct ast_elem* functionRef;
+    if (vEvalStack->uLength == 0) return AST_NODE_UNDEFINED_FUNCTION_CALL; // this should never happen
+    char ePop = vector_pop(vEvalStack, (void*)&functionRef);
+    if (ePop != VECTOR_SUCCESS) return ePop;
+    
+    struct ast_node* callNode = 0;
+    char eNewNode = new_ast_node(&callNode);
+    if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+    char eInitNode = init_ast_node(callNode, AST_NODE_KIND_CALL, 2);
+    if (eInitNode != AST_NODE_SUCCESS) {
+        free(callNode);
+        return eInitNode;
+    }
+
+    char eReplaceRef = replace_empty_node(callNode, functionRef, 0);
+    if (eReplaceRef != AST_NODE_SUCCESS) {
+        free(callNode);
+        return eReplaceRef;
+    }
+
+    char eReplaceParams = replace_empty_node(callNode, (struct ast_elem*)anParNode, 1);
+    if (eReplaceParams != AST_NODE_SUCCESS) {
+        free(callNode);
+        return eReplaceParams;
+    }
+
+    char eAppend = vector_append(vEvalStack, (void*)&callNode);
+    if (eAppend != VECTOR_SUCCESS) {
+        free(callNode);
+        return eAppend;
+    }
+    *out_anNode = callNode;
     return AST_NODE_SUCCESS;
 }
 
@@ -680,10 +728,18 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
             closeParenthesisContext.cExpectedCloseParenthesis = closingPar;
             closeParenthesisContext.tOpenParenthesis = token;
             char eRecurseBuildExpressions = build_expression_list(pptToken, vSyntaxErrors, is_close_parenthesis, &closeParenthesisContext, &expressionList);
-            if (eRecurseBuildExpressions != AST_NODE_SUCCESS) return eRecurseBuildExpressions;
+            if (eRecurseBuildExpressions != AST_NODE_SUCCESS) {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return eRecurseBuildExpressions;
+            }
             struct ast_node* parNode;
             char eNewNode = new_ast_node(&parNode);
-            if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+            if (eNewNode != AST_NODE_SUCCESS) {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return eNewNode;
+            }
             char eInitNode = init_ast_node(parNode, AST_NODE_KIND_PAR, expressionList.uLength);
             if (eInitNode != AST_NODE_SUCCESS) {
                 free(parNode);
@@ -696,11 +752,21 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 if (eReplace != AST_NODE_SUCCESS) return eReplace;
             }
             deinit_vector(&expressionList);
-            char eAddPar = vector_append(&evalStack, (void*)&parNode);
-            if (eAddPar != VECTOR_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
-                return eAddPar;
+            if (lastTransformedTokenValidOperand) { // function call
+                struct ast_node* callNode;
+                char ePopCall = eval_stack_pop_call(&evalStack, vSyntaxErrors, parNode, &callNode);
+                if (ePopCall != AST_NODE_SUCCESS) {
+                    deinit_vector(&operatorStack);
+                    deinit_vector(&evalStack);
+                    return ePopCall;
+                }
+            } else {
+                char eAddPar = vector_append(&evalStack, (void*)&parNode);
+                if (eAddPar != VECTOR_SUCCESS) {
+                    deinit_vector(&operatorStack);
+                    deinit_vector(&evalStack);
+                    return eAddPar;
+                }
             }
             lastTransformedTokenValidOperand = 1;
             if ((**pptToken)->iKind == TOKEN_KIND_EOF) // break out of each loop in the recursion stack
