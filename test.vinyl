@@ -1,9 +1,5 @@
-poop();
-
-{
-    proc hello(a) {
-
-    };;;;;
+proc aeElem() {
+    var a = 3;
 }
 
-poop();
+var a = 4;

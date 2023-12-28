@@ -23,6 +23,8 @@ char vector_append(struct vector* vSelf, void* pElement);
 char vector_append_concat(struct vector* vSelf, struct vector* vOther);
 char vector_clear(struct vector* vSelf);
 char vector_pop(struct vector* vSelf, void* out_pElement);
+char vector_shift(struct vector* vSelf, void* out_pElement);
+char vector_unshift(struct vector* vSelf, void* out_pElement);
 char vector_at(struct vector* vSelf, unsigned int uIndex, void* out_pElement);
 char vector_at_ref(struct vector* vSelf, unsigned int uIndex, void** out_ppElement);
 char deinit_vector(struct vector* vSelf);

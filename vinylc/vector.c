@@ -73,6 +73,32 @@ char vector_pop(struct vector* vSelf, void* out_pElement) {
     return VECTOR_SUCCESS;
 }
 
+char vector_shift(struct vector* vSelf, void* out_pElement) {
+    if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
+    if (vSelf->uLength <= 0) return VECTOR_OOB;
+    if (out_pElement != 0) memcpy(out_pElement, vSelf->data, vSelf->uElementSz);
+    void* newBuf = malloc(vSelf->uCapacity * vSelf->uElementSz);
+    if (newBuf == 0) return VECTOR_FAIL;
+    vSelf->uLength--;
+    memcpy(newBuf, vSelf->data + vSelf->uElementSz, vSelf->uLength * vSelf->uElementSz);
+    free(vSelf->data);
+    vSelf->data = newBuf;
+    return VECTOR_SUCCESS;
+}
+
+char vector_unshift(struct vector* vSelf, void* pElement) {
+    if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
+    int newCapacity = vSelf->uLength >= vSelf->uCapacity ? (vSelf->uLength == 0 ? 1 : vSelf->uLength * 2) : vSelf->uCapacity;
+    void* newBuf = malloc(vSelf->uCapacity * vSelf->uElementSz);
+    if (newBuf == 0) return VECTOR_FAIL;
+    memcpy(newBuf + vSelf->uElementSz, vSelf->data, vSelf->uLength * vSelf->uElementSz);
+    memcpy(newBuf, pElement, vSelf->uElementSz);
+    free(vSelf->data);
+    vSelf->data = newBuf;
+    vSelf->uLength++;
+    return VECTOR_SUCCESS;
+}
+
 char vector_at(struct vector* vSelf, unsigned int uIndex, void* out_pElement) {
     if(vector_assert_not_initialized(vSelf) == VECTOR_SUCCESS) return VECTOR_NOT_INITIALIZED;
     if (uIndex >= vSelf->uLength) return VECTOR_OOB;

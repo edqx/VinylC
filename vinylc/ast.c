@@ -13,32 +13,18 @@ struct syntax_error create_error(short uErrorCode, void* pSpecificContext) {
 
 void print_error(const char* pFileContent, struct syntax_error seSyntaxError) {
     switch (seSyntaxError.uErrorCode) {
-    case SYNTAX_ERROR_NIL:
-        break;
-    case SYNTAX_ERROR_INVALID_UNARY_OPERATOR:
-        SYNTAX_ERROR_PRINT(pFileContent, invalid_unary_operator, syntax_error_invalid_unary_operator_context, seSyntaxError);
-        break;
-    case SYNTAX_ERROR_EXPECTED_OPERATOR:
-        SYNTAX_ERROR_PRINT(pFileContent, expected_operator, syntax_error_expected_operator_context, seSyntaxError);
-        break;
-    case SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT:
-        SYNTAX_ERROR_PRINT(pFileContent, var_stmt_expected_assignment, syntax_error_var_stmt_expected_assignment_context, seSyntaxError);
-        break;
-    case SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND:
-        SYNTAX_ERROR_PRINT(pFileContent, missing_right_hand_operand, syntax_error_missing_right_hand_operand_context, seSyntaxError);
-        break;
-    case SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER:
-        SYNTAX_ERROR_PRINT(pFileContent, var_stmt_expected_identifier, syntax_error_var_stmt_expected_identifier_context, seSyntaxError);
-        break;
-    case SYNTAX_ERROR_INVALID_CLOSE_PARENTHESIS:
-        SYNTAX_ERROR_PRINT(pFileContent, invalid_close_parenthesis, syntax_error_invalid_close_parenthesis_context, seSyntaxError);
-        break;
-    case SYNTAX_ERROR_UNMATCHED_CLOSE_PARENTHESIS:
-        SYNTAX_ERROR_PRINT(pFileContent, unmatched_close_parenthesis, syntax_error_unmatched_close_parenthesis_context, seSyntaxError);
-        break;
-    case SYNTAX_ERROR_UNMATCHED_OPEN_PARENTHESIS:
-        SYNTAX_ERROR_PRINT(pFileContent, unmatched_open_parenthesis, syntax_error_unmatched_open_parenthesis_context, seSyntaxError);
-        break;
+    case SYNTAX_ERROR_NIL: break;
+    case SYNTAX_ERROR_INVALID_UNARY_OPERATOR: SYNTAX_ERROR_PRINT(pFileContent, invalid_unary_operator, syntax_error_invalid_unary_operator_context, seSyntaxError); break;
+    case SYNTAX_ERROR_EXPECTED_OPERATOR:SYNTAX_ERROR_PRINT(pFileContent, expected_operator, syntax_error_expected_operator_context, seSyntaxError); break;
+    case SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT: SYNTAX_ERROR_PRINT(pFileContent, var_stmt_expected_assignment, syntax_error_var_stmt_expected_assignment_context, seSyntaxError); break;
+    case SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND: SYNTAX_ERROR_PRINT(pFileContent, missing_right_hand_operand, syntax_error_missing_right_hand_operand_context, seSyntaxError); break;
+    case SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER: SYNTAX_ERROR_PRINT(pFileContent, var_stmt_expected_identifier, syntax_error_var_stmt_expected_identifier_context, seSyntaxError); break;
+    case SYNTAX_ERROR_INVALID_CLOSE_PARENTHESIS: SYNTAX_ERROR_PRINT(pFileContent, invalid_close_parenthesis, syntax_error_invalid_close_parenthesis_context, seSyntaxError); break;
+    case SYNTAX_ERROR_UNMATCHED_CLOSE_PARENTHESIS: SYNTAX_ERROR_PRINT(pFileContent, unmatched_close_parenthesis, syntax_error_unmatched_close_parenthesis_context, seSyntaxError); break;
+    case SYNTAX_ERROR_UNMATCHED_OPEN_PARENTHESIS: SYNTAX_ERROR_PRINT(pFileContent, unmatched_open_parenthesis, syntax_error_unmatched_open_parenthesis_context, seSyntaxError); break;
+    case SYNTAX_ERROR_MISSING_FUNCTION_IMPL: SYNTAX_ERROR_PRINT(pFileContent, missing_function_impl, syntax_error_missing_function_impl_context, seSyntaxError); break;
+    case SYNTAX_ERROR_MISSING_FUNCTION_DECL: SYNTAX_ERROR_PRINT(pFileContent, missing_function_decl, syntax_error_missing_function_decl_context, seSyntaxError); break;
+    case SYNTAX_ERROR_INVALID_FUNCTION_DECL: SYNTAX_ERROR_PRINT(pFileContent, invalid_function_decl, syntax_error_invalid_function_decl_context, seSyntaxError); break;
     default:
         printf("\x1b[91m[ERROR]: %i <not printed>\x1b[0m\n", seSyntaxError.uErrorCode);
         break;
@@ -96,8 +82,8 @@ SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_identifier, syntax_error_var_stmt_
         printf("\x1b[91m[ERROR]: Expected identifier at %i\x1b[0m\n", pContext->tVarToken->fiirFileRange.uEndIdx);
     } else {
         printf("\x1b[91m[ERROR]: Expected identifier at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
+        free(range);
     }
-    if (range != 0) free(range);
 }
 
 SYNTAX_ERROR_PRINT_FUNCTION(invalid_close_parenthesis, syntax_error_invalid_close_parenthesis_context) {
@@ -116,6 +102,37 @@ SYNTAX_ERROR_PRINT_FUNCTION(unmatched_open_parenthesis, syntax_error_unmatched_o
     char expectedClosePar = get_matching_close_parenthesis(pContext->tOpenParenthesis->pContent[0]);
     printf("\x1b[91m[ERROR]: Unmatched open parenthesis, got EOF but expected '%c', see %i..%i\x1b[0m\n",
         expectedClosePar, pContext->tOpenParenthesis->fiirFileRange.uStartIdx, pContext->tOpenParenthesis->fiirFileRange.uEndIdx);
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(missing_function_impl, syntax_error_missing_function_impl_context) {
+    struct file_input_idx_range* range = 0;
+    if (pContext->aeFunctionCall != 0) recursive_get_ast_range((struct ast_elem*)pContext->aeFunctionCall, &range);
+    if (pContext->alFunctionName != 0) {
+        printf("\x1b[91m[ERROR]: Expected implementation for function '%s' at %i\x1b[0m\n", pContext->alFunctionName->tToken->pContent, range->uEndIdx);
+    } else if (range != 0) {
+        printf("\x1b[91m[ERROR]: Expected implementation of function at %i\x1b[0m\n", range->uEndIdx);
+    } else {
+        printf("\x1b[91m[ERROR]: Expected function implementation following '%s' at %i..%i\x1b[0m\n", pContext->tProcToken->pContent,
+            pContext->tProcToken->fiirFileRange.uStartIdx, pContext->tProcToken->fiirFileRange.uEndIdx);
+    }
+    if (range != 0) free(range);
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(missing_function_decl, syntax_error_missing_function_decl_context) {
+    printf("\x1b[91m[ERROR]: Expected function declaration following '%s' at %i..%i\x1b[0m\n", pContext->tProcToken->pContent,
+        pContext->tProcToken->fiirFileRange.uStartIdx, pContext->tProcToken->fiirFileRange.uEndIdx);
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(invalid_function_decl, syntax_error_invalid_function_decl_context) {
+    struct file_input_idx_range* range = 0;
+    if (pContext->aeFunctionDecl != 0) recursive_get_ast_range(pContext->aeFunctionDecl, &range);
+    if (range == 0) {
+        printf("\x1b[91m[ERROR]: Invalid function declaration following '%s' at %i..%i\x1b[0m\n", pContext->tProcToken->pContent,
+            pContext->tProcToken->fiirFileRange.uStartIdx, pContext->tProcToken->fiirFileRange.uEndIdx);
+    } else {
+        printf("\x1b[91m[ERROR]: Invalid function declaration at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
+        free(range);
+    }
 }
 
 struct ast_node create_ast_node() {
@@ -398,7 +415,7 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
     if (vEvalStack->uLength != 0) {
-        char ePopRight = vector_pop(vEvalStack, (void*)&right);
+        char ePopRight = vector_shift(vEvalStack, (void*)&right);
         if (ePopRight != VECTOR_SUCCESS) return ePopRight;
     }
 
@@ -491,7 +508,7 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
         }
     }
 
-    char eAppend = vector_append(vEvalStack, (void*)&varDeclStmtNode);
+    char eAppend = vector_unshift(vEvalStack, (void*)&varDeclStmtNode);
     if (eAppend != VECTOR_SUCCESS) {
         free(varDeclStmtNode);
         free(varTypeLiteral);
@@ -501,12 +518,43 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
     return AST_NODE_SUCCESS;
 }
 
-char eval_stack_pop_proc_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tProcDeclaration, struct ast_node* anBlockNode, struct ast_node** out_anNode) {
-    struct ast_elem* formalParams = 0;
-    struct ast_elem* functionName = 0;
-    if (vEvalStack->uLength == 0) {
-
+char eval_stack_pop_proc_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tProcToken, struct ast_node** out_anNode) {
+    struct ast_elem* functionCall = 0;
+    if (vEvalStack->uLength != 0) {
+        char eShift = vector_shift(vEvalStack, &functionCall);
+        if (eShift != VECTOR_SUCCESS) return eShift;
     }
+    struct ast_elem* codeBlock = 0;
+    if (vEvalStack->uLength != 0) {
+        char eShift = vector_shift(vEvalStack, &codeBlock);
+        if (eShift != VECTOR_SUCCESS) return eShift;
+    }
+
+    struct ast_node* callNode = 0;
+    struct ast_node* blockNode = 0;
+    if (functionCall != 0 && functionCall->iKind == AST_NODE_KIND_CALL)
+        callNode = (struct ast_node*)functionCall;
+    if (codeBlock != 0)
+        blockNode = (struct ast_node*)codeBlock;
+    
+    if (functionCall == 0) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_missing_function_decl_context);
+        errContext->tProcToken = tProcToken;
+        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_MISSING_FUNCTION_DECL, errContext);
+    } else if (functionCall->iKind != AST_NODE_KIND_CALL) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_invalid_function_decl_context);
+        errContext->tProcToken = tProcToken;
+        errContext->aeFunctionDecl = functionCall;
+        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_FUNCTION_DECL, errContext);
+    }
+    if (functionCall != 0 && (codeBlock == 0 || codeBlock->iKind != AST_NODE_KIND_BLOCK)) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_missing_function_impl_context);
+        errContext->tProcToken = tProcToken;
+        errContext->aeFunctionCall = functionCall;
+        errContext->alFunctionName = 0;
+        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_MISSING_FUNCTION_IMPL, errContext);
+    }
+    return AST_NODE_SUCCESS;
 }
 
 char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode) {
@@ -568,6 +616,7 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
             eStackPop = eval_stack_pop_var_stmt(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
             break;
         case OPERATOR_PARSE_MODE_PROC_STMT:
+            eStackPop = eval_stack_pop_proc_decl(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
             break;
         case OPERATOR_PARSE_MODE_TYPE_STMT:
             break;
@@ -717,6 +766,8 @@ char build_expression_list_par(struct vector* vExpressionList, struct vector* vO
         *out_bIsExpression = 0;
         char eAddBlock = vector_append(vEvalStack, (void*)&parNode);
         if (eAddBlock != VECTOR_SUCCESS) return eAddBlock;
+        char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors);
+        if (eFlush != AST_NODE_SUCCESS) return eFlush;
         break;
     }
     if ((**pptToken)->iKind == TOKEN_KIND_EOF) // break out of each loop in the recursion stack

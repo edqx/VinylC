@@ -48,6 +48,9 @@ struct syntax_error {
 #define SYNTAX_ERROR_INVALID_CLOSE_PARENTHESIS (short)6
 #define SYNTAX_ERROR_UNMATCHED_CLOSE_PARENTHESIS (short)7
 #define SYNTAX_ERROR_UNMATCHED_OPEN_PARENTHESIS (short)8
+#define SYNTAX_ERROR_MISSING_FUNCTION_IMPL (short)9
+#define SYNTAX_ERROR_MISSING_FUNCTION_DECL (short)10
+#define SYNTAX_ERROR_INVALID_FUNCTION_DECL (short)11
 
 struct syntax_error_invalid_unary_operator_context { struct token* tToken; };
 struct syntax_error_expected_operator_context { struct token* tToken; };
@@ -57,6 +60,9 @@ struct syntax_error_var_stmt_expected_identifier_context { struct token* tVarTok
 struct syntax_error_invalid_close_parenthesis_context { struct token* tOpenParenthesis; struct token* tCloseParenthesis; };
 struct syntax_error_unmatched_close_parenthesis_context { struct token* tCloseParenthesis; };
 struct syntax_error_unmatched_open_parenthesis_context { struct token* tOpenParenthesis; };
+struct syntax_error_missing_function_impl_context { struct token* tProcToken; struct ast_elem* aeFunctionCall; struct ast_literal* alFunctionName; };
+struct syntax_error_missing_function_decl_context { struct token* tProcToken; };
+struct syntax_error_invalid_function_decl_context { struct token* tProcToken; struct ast_elem* aeFunctionDecl; };
 
 #define INSTANCE_SYNTAX_ERROR_CONTEXT(VARNAME, CONTEXT_STRUCT) struct CONTEXT_STRUCT* VARNAME = (struct CONTEXT_STRUCT*)malloc(sizeof(struct CONTEXT_STRUCT))
 #define REGISTER_SYNTAX_ERROR(SYNTAX_ERRORS_STORE, VARNAME, ERROR_CODE, CONTEXT_VARNAME) struct syntax_error VARNAME = create_error(ERROR_CODE, CONTEXT_VARNAME);\
@@ -92,6 +98,9 @@ SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_identifier, syntax_error_var_stmt_
 SYNTAX_ERROR_PRINT_FUNCTION(invalid_close_parenthesis, syntax_error_invalid_close_parenthesis_context);
 SYNTAX_ERROR_PRINT_FUNCTION(unmatched_close_parenthesis, syntax_error_unmatched_close_parenthesis_context);
 SYNTAX_ERROR_PRINT_FUNCTION(unmatched_open_parenthesis, syntax_error_unmatched_open_parenthesis_context);
+SYNTAX_ERROR_PRINT_FUNCTION(missing_function_impl, syntax_error_missing_function_impl_context);
+SYNTAX_ERROR_PRINT_FUNCTION(missing_function_decl, syntax_error_missing_function_decl_context);
+SYNTAX_ERROR_PRINT_FUNCTION(invalid_function_decl, syntax_error_invalid_function_decl_context);
 
 struct ast_node create_ast_node();
 char new_ast_node(struct ast_node** out_anNode);
@@ -170,7 +179,7 @@ char get_parenthesis_node_construction_kind(char cOpenPar);
 
 char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode);
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode);
-char eval_stack_pop_proc_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tProcDeclaration, struct ast_node* anBlockNode, struct ast_node** out_anNode);
+char eval_stack_pop_proc_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tProcToken, struct ast_node** out_anNode);
 char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode);
 char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors);
 
