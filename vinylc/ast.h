@@ -24,7 +24,9 @@
 #define AST_NODE_KIND_UNARY_OPER (char)4
 #define AST_NODE_KIND_VAR_DECL_STMT (char)5
 #define AST_NODE_KIND_PAR (char)6
-#define AST_NODE_KIND_CALL (char)7
+#define AST_NODE_KIND_BLOCK (char)7
+#define AST_NODE_KIND_TUPLE (char)8
+#define AST_NODE_KIND_CALL (char)9
 
 #define AST_LITERAL_KIND_NIL (char)0
 #define AST_LITERAL_KIND_STR (char)1
@@ -164,6 +166,7 @@ AST_ELEM_GET_FUNCTION(call, function_ref);
 AST_ELEM_GET_FUNCTION(call, params);
 
 char get_matching_close_parenthesis(char cOpenPar);
+char get_parenthesis_node_construction_kind(char cOpenPar);
 
 char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode);
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode);

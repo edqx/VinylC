@@ -307,6 +307,15 @@ char get_matching_close_parenthesis(char cOpenPar) {
     return '\0';
 }
 
+char get_parenthesis_node_construction_kind(char cOpenPar) {
+    switch (cOpenPar) {
+    case '(': return AST_NODE_KIND_PAR;
+    case '{': return AST_NODE_KIND_BLOCK;
+    case '[': return AST_NODE_KIND_TUPLE;
+    }
+    return AST_NODE_KIND_EMPTY;
+}
+
 char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
     struct ast_elem* left = 0;
@@ -740,7 +749,8 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 deinit_vector(&evalStack);
                 return eNewNode;
             }
-            char eInitNode = init_ast_node(parNode, AST_NODE_KIND_PAR, expressionList.uLength);
+            char nodeKind = get_parenthesis_node_construction_kind(token->pContent[0]);
+            char eInitNode = init_ast_node(parNode, nodeKind, expressionList.uLength);
             if (eInitNode != AST_NODE_SUCCESS) {
                 free(parNode);
                 return eInitNode;
@@ -752,7 +762,7 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 if (eReplace != AST_NODE_SUCCESS) return eReplace;
             }
             deinit_vector(&expressionList);
-            if (lastTransformedTokenValidOperand) { // function call
+            if (lastTransformedTokenValidOperand == 1 && nodeKind == AST_NODE_KIND_PAR) { // function call
                 struct ast_node* callNode;
                 char ePopCall = eval_stack_pop_call(&evalStack, vSyntaxErrors, parNode, &callNode);
                 if (ePopCall != AST_NODE_SUCCESS) {
@@ -761,6 +771,11 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                     return ePopCall;
                 }
             } else {
+                if (lastTransformedTokenValidOperand == 1) {
+                    INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_expected_operator_context);
+                    context->tToken = token;
+                    REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_EXPECTED_OPERATOR, context);
+                }
                 char eAddPar = vector_append(&evalStack, (void*)&parNode);
                 if (eAddPar != VECTOR_SUCCESS) {
                     deinit_vector(&operatorStack);
