@@ -1,3 +1,9 @@
-proc hello(a) {
-    
+poop();
+
+{
+    proc hello(a) {
+
+    };;;;;
 }
+
+poop();

@@ -170,6 +170,7 @@ char get_parenthesis_node_construction_kind(char cOpenPar);
 
 char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode);
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode);
+char eval_stack_pop_proc_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tProcDeclaration, struct ast_node* anBlockNode, struct ast_node** out_anNode);
 char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode);
 char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors);
 
@@ -183,7 +184,12 @@ struct close_parenthesis_context {
 CONTINUE_AST_PREDICATE_FUNCTION(is_eof_token);
 CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis);
 
-char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack);
+char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors);
+char build_expression_list_separator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken);
+char build_expression_list_keyw(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char iParseMode);
+char build_expression_list_literal(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken);
+char build_expression_list_operator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char bIsUnary);
+char build_expression_list_par(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, struct token*** pptToken, char bSucceedsEval, char* out_bIsExpression);
 char build_expression_list(struct token*** pptToken, struct vector* vSyntaxErrors, CONTINUE_AST_PREDICATE_FUNCTION((*fpContinuePredicate)), void *pCtx, struct vector* out_vExpressionList);
 char build_stmt_list_node(struct token** ptToken, struct vector* vSyntaxErrors, struct ast_node** out_anStmtListNode);
 

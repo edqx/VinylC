@@ -501,8 +501,16 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
     return AST_NODE_SUCCESS;
 }
 
+char eval_stack_pop_proc_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tProcDeclaration, struct ast_node* anBlockNode, struct ast_node** out_anNode) {
+    struct ast_elem* formalParams = 0;
+    struct ast_elem* functionName = 0;
+    if (vEvalStack->uLength == 0) {
+
+    }
+}
+
 char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode) {
-    struct ast_elem* functionRef;
+    struct ast_elem* functionRef = 0;
     if (vEvalStack->uLength == 0) return AST_NODE_UNDEFINED_FUNCTION_CALL; // this should never happen
     char ePop = vector_pop(vEvalStack, (void*)&functionRef);
     if (ePop != VECTOR_SUCCESS) return ePop;
@@ -594,13 +602,125 @@ CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis) {
     return AST_NODE_STOP;
 }
 
-char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack) {
-    char eConcat = vector_append_concat(vExpressionList, vEvalStack);
-    if (eConcat != VECTOR_SUCCESS) return eConcat;
-    char eClear1 = vector_clear(vOperatorStack);
-    if (eClear1 != VECTOR_SUCCESS) return eClear1;
-    char eClear2 = vector_clear(vEvalStack);
-    if (eClear2 != VECTOR_SUCCESS) return eClear2;
+char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors) {
+    if (vOperatorStack->uLength > 0) {
+        char ePop = pop_greater_precedence(0, vOperatorStack, vEvalStack, vSyntaxErrors);
+        if (ePop != AST_NODE_SUCCESS) return ePop;
+    }
+    
+    if (vEvalStack->uLength > 0) {
+        char eConcat = vector_append_concat(vExpressionList, vEvalStack);
+        if (eConcat != VECTOR_SUCCESS) return eConcat;
+        char eClear1 = vector_clear(vOperatorStack);
+        if (eClear1 != VECTOR_SUCCESS) return eClear1;
+        char eClear2 = vector_clear(vEvalStack);
+        if (eClear2 != VECTOR_SUCCESS) return eClear2;
+    }
+    return AST_NODE_SUCCESS;
+}
+
+char build_expression_list_separator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken) {
+    char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors);
+    if (eFlush != AST_NODE_SUCCESS) return eFlush;
+    return AST_NODE_SUCCESS;
+}
+
+char build_expression_list_keyw(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char iParseMode) {
+    char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors);
+    if (eFlush != AST_NODE_SUCCESS) return eFlush;
+    
+    struct operator_pending_pop operatorPending;
+    operatorPending.tToken = tToken;
+    operatorPending.iOperatorParseMode = iParseMode;
+    char eAddOp = vector_append(vOperatorStack, (void*)&operatorPending);
+    if (eAddOp != VECTOR_SUCCESS) return eAddOp;
+    return AST_NODE_SUCCESS;
+}
+
+char build_expression_list_literal(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken) {
+    struct ast_literal* literal = 0;
+    char eAllocAst = allocate_ast_literal_from_token(tToken, &literal);
+    if (eAllocAst != AST_NODE_SUCCESS) return eAllocAst;
+
+    char eAddLit = vector_append(vEvalStack, (void*)&literal);
+    if (eAddLit != VECTOR_SUCCESS) return eAddLit;
+    return AST_NODE_SUCCESS;
+}
+
+char build_expression_list_operator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char bIsUnary) {
+    if (vOperatorStack->uLength > 0) {
+        char p = get_operator_precedence(tToken, bIsUnary ? OPERATOR_PARSE_MODE_UNARY : OPERATOR_PARSE_MODE_BINARY);
+        char ePop = pop_greater_precedence(p, vOperatorStack, vEvalStack, vSyntaxErrors);
+        if (ePop != AST_NODE_SUCCESS) return ePop;
+    }
+
+    struct operator_pending_pop operatorPending;
+    operatorPending.tToken = tToken;
+    operatorPending.iOperatorParseMode = bIsUnary ? OPERATOR_PARSE_MODE_UNARY : OPERATOR_PARSE_MODE_BINARY;
+    char eAddOp = vector_append(vOperatorStack, (void*)&operatorPending);
+    if (eAddOp != VECTOR_SUCCESS) return eAddOp;
+    return AST_NODE_SUCCESS;
+}
+
+char build_expression_list_par(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, struct token*** pptToken, char bSucceedsEval, char* out_bIsExpression) {
+    struct vector expressionList = create_vector();
+    char closingPar = get_matching_close_parenthesis(tToken->pContent[0]);
+    if (closingPar == '\0') return AST_NODE_INVALID_PARENTHESIS;
+    (*pptToken)++;
+    struct close_parenthesis_context closeParenthesisContext;
+    closeParenthesisContext.cExpectedCloseParenthesis = closingPar;
+    closeParenthesisContext.tOpenParenthesis = tToken;
+    char eRecurseBuildExpressions = build_expression_list(pptToken, vSyntaxErrors, is_close_parenthesis, &closeParenthesisContext, &expressionList);
+    if (eRecurseBuildExpressions != AST_NODE_SUCCESS) return eRecurseBuildExpressions;
+    struct ast_node* parNode;
+    char eNewNode = new_ast_node(&parNode);
+    if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+    char nodeKind = get_parenthesis_node_construction_kind(tToken->pContent[0]);
+    char eInitNode = init_ast_node(parNode, nodeKind, expressionList.uLength);
+    if (eInitNode != AST_NODE_SUCCESS) {
+        free(parNode);
+        return eInitNode;
+    }
+    for (int i = 0; i < expressionList.uLength; i++) {
+        struct ast_elem* evalElem;
+        vector_at(&expressionList, i, (void*)&evalElem);
+        char eReplace = replace_empty_node(parNode, evalElem, i);
+        if (eReplace != AST_NODE_SUCCESS) return eReplace;
+    }
+    char eDeInit = deinit_vector(&expressionList);
+    if (eDeInit != VECTOR_SUCCESS) {
+        free(parNode);
+        return eDeInit;
+    }
+    switch (nodeKind) {
+    case AST_NODE_KIND_PAR:
+        if (bSucceedsEval) {
+            struct ast_node* callNode;
+            char ePopCall = eval_stack_pop_call(vEvalStack, vSyntaxErrors, parNode, &callNode);
+            if (ePopCall != AST_NODE_SUCCESS) {
+                deinit_vector(vOperatorStack);
+                deinit_vector(vEvalStack);
+                return ePopCall;
+            }
+        } else {
+            char eAddPar = vector_append(vEvalStack, (void*)&parNode);
+            if (eAddPar != VECTOR_SUCCESS) return eAddPar;
+        }
+        *out_bIsExpression = 1;
+        break;
+    case AST_NODE_KIND_TUPLE:
+        *out_bIsExpression = 1;
+        char eAddTuple = vector_append(vEvalStack, (void*)&parNode);
+        if (eAddTuple != VECTOR_SUCCESS) return eAddTuple;
+        break;
+    case AST_NODE_KIND_BLOCK:
+        *out_bIsExpression = 0;
+        char eAddBlock = vector_append(vEvalStack, (void*)&parNode);
+        if (eAddBlock != VECTOR_SUCCESS) return eAddBlock;
+        break;
+    }
+    if ((**pptToken)->iKind == TOKEN_KIND_EOF) // break out of each loop in the recursion stack
+        --*pptToken; // i hate myself for this.. but it works :3
     return AST_NODE_SUCCESS;
 }
 
@@ -622,22 +742,11 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
     for (; (eContinuePredicate = fpContinuePredicate(**pptToken, vSyntaxErrors, pCtx)) == AST_NODE_SUCCESS; (*pptToken)++) {
         struct token* token = **pptToken;
         if (token->iKind == TOKEN_KIND_SEPARATOR) {
-            if (operatorStack.uLength > 0) {
-                char ePop = pop_greater_precedence(0, &operatorStack, &evalStack, vSyntaxErrors);
-                if (ePop != AST_NODE_SUCCESS) {
-                    deinit_vector(&operatorStack);
-                    deinit_vector(&evalStack);
-                    return ePop;
-                }
-            }
-
-            if (evalStack.uLength > 0) {
-                char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack);
-                if (eFlush != AST_NODE_SUCCESS) {
-                    deinit_vector(&operatorStack);
-                    deinit_vector(&evalStack);
-                    return eFlush;
-                }
+            char eBuildSep = build_expression_list_separator(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token);
+            if (eBuildSep != AST_NODE_SUCCESS) {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return eBuildSep;
             }
             lastTransformedTokenValidOperand = 0;
             continue;
@@ -645,32 +754,11 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
         if (token->iKind == TOKEN_KIND_IDENT) {
             char parseMode = get_keyword_operator_parse_mode(token->pContent);
             if (parseMode != OPERATOR_PARSE_MODE_NIL) {
-                if (operatorStack.uLength > 0) {
-                    char ePop = pop_greater_precedence(0, &operatorStack, &evalStack, vSyntaxErrors);
-                    if (ePop != AST_NODE_SUCCESS) {
-                        deinit_vector(&operatorStack);
-                        deinit_vector(&evalStack);
-                        return ePop;
-                    }
-                }
-
-                if (evalStack.uLength > 0) {
-                    char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack);
-                    if (eFlush != AST_NODE_SUCCESS) {
-                        deinit_vector(&operatorStack);
-                        deinit_vector(&evalStack);
-                        return eFlush;
-                    }
-                }
-                
-                struct operator_pending_pop operatorPending;
-                operatorPending.tToken = token;
-                operatorPending.iOperatorParseMode = parseMode;
-                char eAddOp = vector_append(&operatorStack, (void*)&operatorPending);
-                if (eAddOp != VECTOR_SUCCESS) {
+                char eBuildKeyw = build_expression_list_keyw(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, parseMode);
+                if (eBuildKeyw != AST_NODE_SUCCESS) {
                     deinit_vector(&operatorStack);
                     deinit_vector(&evalStack);
-                    return eAddOp;
+                    return eBuildKeyw;
                 }
                 lastTransformedTokenValidOperand = 0;
                 continue;
@@ -685,107 +773,32 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 context->tToken = token;
                 REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_EXPECTED_OPERATOR, context);
             }
-
-            struct ast_literal* literal = 0;
-            char eAllocAst = allocate_ast_literal_from_token(token, &literal);
-            if (eAllocAst != AST_NODE_SUCCESS) {
+            char eBuildLiteral = build_expression_list_literal(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token);
+            if (eBuildLiteral != AST_NODE_SUCCESS) {
                 deinit_vector(&operatorStack);
                 deinit_vector(&evalStack);
-                return eAllocAst;
+                return eBuildLiteral;
             }
-
             lastTransformedTokenValidOperand = 1;
-            char eAddLit = vector_append(&evalStack, (void*)&literal);
-            if (eAddLit != VECTOR_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
-                return eAddLit;
-            }
             break;
         case TOKEN_KIND_OPERATOR:
-            if (operatorStack.uLength > 0) {
-                char p = get_operator_precedence(token, lastTransformedTokenValidOperand);
-                char ePop = pop_greater_precedence(p, &operatorStack, &evalStack, vSyntaxErrors);
-                if (ePop != AST_NODE_SUCCESS) {
-                    deinit_vector(&operatorStack);
-                    deinit_vector(&evalStack);
-                    return ePop;
-                }
-            }
-
-            struct operator_pending_pop operatorPending;
-            operatorPending.tToken = token;
-            operatorPending.iOperatorParseMode = lastTransformedTokenValidOperand ? OPERATOR_PARSE_MODE_BINARY : OPERATOR_PARSE_MODE_UNARY;
-            char eAddOp = vector_append(&operatorStack, (void*)&operatorPending);
-            if (eAddOp != VECTOR_SUCCESS) {
+            char eBuildOper = build_expression_list_operator(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, !lastTransformedTokenValidOperand);
+            if (eBuildOper != AST_NODE_SUCCESS) {
                 deinit_vector(&operatorStack);
                 deinit_vector(&evalStack);
-                return eAddOp;
+                return eBuildOper;
             }
             lastTransformedTokenValidOperand = 0;
             break;
         case TOKEN_KIND_PAR_OPEN:
-            struct vector expressionList = create_vector();
-            char closingPar = get_matching_close_parenthesis(token->pContent[0]);
-            if (closingPar == '\0') {
+            char isExpression = 0;
+            char eBuildPar = build_expression_list_par(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, pptToken, lastTransformedTokenValidOperand, &isExpression);
+            if (eBuildPar != AST_NODE_SUCCESS) {
                 deinit_vector(&operatorStack);
                 deinit_vector(&evalStack);
-                return AST_NODE_INVALID_PARENTHESIS;
+                return eBuildPar;
             }
-            (*pptToken)++;
-            struct close_parenthesis_context closeParenthesisContext;
-            closeParenthesisContext.cExpectedCloseParenthesis = closingPar;
-            closeParenthesisContext.tOpenParenthesis = token;
-            char eRecurseBuildExpressions = build_expression_list(pptToken, vSyntaxErrors, is_close_parenthesis, &closeParenthesisContext, &expressionList);
-            if (eRecurseBuildExpressions != AST_NODE_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
-                return eRecurseBuildExpressions;
-            }
-            struct ast_node* parNode;
-            char eNewNode = new_ast_node(&parNode);
-            if (eNewNode != AST_NODE_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
-                return eNewNode;
-            }
-            char nodeKind = get_parenthesis_node_construction_kind(token->pContent[0]);
-            char eInitNode = init_ast_node(parNode, nodeKind, expressionList.uLength);
-            if (eInitNode != AST_NODE_SUCCESS) {
-                free(parNode);
-                return eInitNode;
-            }
-            for (int i = 0; i < expressionList.uLength; i++) {
-                struct ast_elem* evalElem;
-                vector_at(&expressionList, i, (void*)&evalElem);
-                char eReplace = replace_empty_node(parNode, evalElem, i);
-                if (eReplace != AST_NODE_SUCCESS) return eReplace;
-            }
-            deinit_vector(&expressionList);
-            if (lastTransformedTokenValidOperand == 1 && nodeKind == AST_NODE_KIND_PAR) { // function call
-                struct ast_node* callNode;
-                char ePopCall = eval_stack_pop_call(&evalStack, vSyntaxErrors, parNode, &callNode);
-                if (ePopCall != AST_NODE_SUCCESS) {
-                    deinit_vector(&operatorStack);
-                    deinit_vector(&evalStack);
-                    return ePopCall;
-                }
-            } else {
-                if (lastTransformedTokenValidOperand == 1) {
-                    INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_expected_operator_context);
-                    context->tToken = token;
-                    REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_EXPECTED_OPERATOR, context);
-                }
-                char eAddPar = vector_append(&evalStack, (void*)&parNode);
-                if (eAddPar != VECTOR_SUCCESS) {
-                    deinit_vector(&operatorStack);
-                    deinit_vector(&evalStack);
-                    return eAddPar;
-                }
-            }
-            lastTransformedTokenValidOperand = 1;
-            if ((**pptToken)->iKind == TOKEN_KIND_EOF) // break out of each loop in the recursion stack
-                --*pptToken; // i hate myself for this.. but it works :3
+            lastTransformedTokenValidOperand = isExpression;
             break;
         case TOKEN_KIND_PAR_CLOSE:
             INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_unmatched_close_parenthesis_context);
@@ -801,15 +814,8 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
         return eContinuePredicate;
     }
 
-    if (operatorStack.uLength > 0) {
-        char ePop = pop_greater_precedence(0, &operatorStack, &evalStack, vSyntaxErrors);
-        if (ePop != AST_NODE_SUCCESS) return ePop;
-    }
-
-    if (evalStack.uLength > 0) {
-        char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack);
-        if (eFlush != AST_NODE_SUCCESS) return eFlush;
-    }
+    char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors);
+    if (eFlush != AST_NODE_SUCCESS) return eFlush;
 
     deinit_vector(&operatorStack);
     deinit_vector(&evalStack);
