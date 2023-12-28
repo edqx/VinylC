@@ -30,6 +30,15 @@ void print_error(const char* pFileContent, struct syntax_error seSyntaxError) {
     case SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER:
         SYNTAX_ERROR_PRINT(pFileContent, var_stmt_expected_identifier, syntax_error_var_stmt_expected_identifier_context, seSyntaxError);
         break;
+    case SYNTAX_ERROR_INVALID_CLOSE_PARENTHESIS:
+        SYNTAX_ERROR_PRINT(pFileContent, invalid_close_parenthesis, syntax_error_invalid_close_parenthesis_context, seSyntaxError);
+        break;
+    case SYNTAX_ERROR_UNMATCHED_CLOSE_PARENTHESIS:
+        SYNTAX_ERROR_PRINT(pFileContent, unmatched_close_parenthesis, syntax_error_unmatched_close_parenthesis_context, seSyntaxError);
+        break;
+    case SYNTAX_ERROR_UNMATCHED_OPEN_PARENTHESIS:
+        SYNTAX_ERROR_PRINT(pFileContent, unmatched_open_parenthesis, syntax_error_unmatched_open_parenthesis_context, seSyntaxError);
+        break;
     default:
         printf("\x1b[91m[ERROR]: %i <not printed>\x1b[0m\n", seSyntaxError.uErrorCode);
         break;
@@ -89,6 +98,24 @@ SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_identifier, syntax_error_var_stmt_
         printf("\x1b[91m[ERROR]: Expected identifier at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
     }
     if (range != 0) free(range);
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(invalid_close_parenthesis, syntax_error_invalid_close_parenthesis_context) {
+    char expectedClosePar = get_matching_close_parenthesis(pContext->tOpenParenthesis->pContent[0]);
+    printf("\x1b[91m[ERROR]: Invalid close parenthesis at %i..%i, expected '%c', see %i..%i\x1b[0m\n",
+        pContext->tCloseParenthesis->fiirFileRange.uStartIdx, pContext->tCloseParenthesis->fiirFileRange.uEndIdx,
+        expectedClosePar, pContext->tOpenParenthesis->fiirFileRange.uStartIdx, pContext->tOpenParenthesis->fiirFileRange.uEndIdx);
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(unmatched_close_parenthesis, syntax_error_unmatched_close_parenthesis_context) {
+    printf("\x1b[91m[ERROR]: Unmatched close parenthesis at %i..%i\x1b[0m\n",
+        pContext->tCloseParenthesis->fiirFileRange.uStartIdx, pContext->tCloseParenthesis->fiirFileRange.uEndIdx);
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(unmatched_open_parenthesis, syntax_error_unmatched_open_parenthesis_context) {
+    char expectedClosePar = get_matching_close_parenthesis(pContext->tOpenParenthesis->pContent[0]);
+    printf("\x1b[91m[ERROR]: Unmatched open parenthesis, got EOF but expected '%c', see %i..%i\x1b[0m\n",
+        expectedClosePar, pContext->tOpenParenthesis->fiirFileRange.uStartIdx, pContext->tOpenParenthesis->fiirFileRange.uEndIdx);
 }
 
 struct ast_node create_ast_node() {
@@ -490,13 +517,24 @@ CONTINUE_AST_PREDICATE_FUNCTION(is_eof_token) {
 }
 
 CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis) {
+    struct close_parenthesis_context* closeParContext = (struct close_parenthesis_context*)pCtx;
     if (pToken->iKind == TOKEN_KIND_EOF) {
-        
+        INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_unmatched_open_parenthesis_context);
+        errContext->tOpenParenthesis = closeParContext->tOpenParenthesis;
+        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_UNMATCHED_OPEN_PARENTHESIS, errContext);
+        return AST_NODE_STOP;
     }
 
     if (pToken->iKind != TOKEN_KIND_PAR_CLOSE) return AST_NODE_SUCCESS;
-    char endParenthesis = *(char*)pCtx;
-    return pToken->pContent[0] == endParenthesis ? AST_NODE_STOP : AST_NODE_SUCCESS;
+
+    if (closeParContext->cExpectedCloseParenthesis != pToken->pContent[0]) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_invalid_close_parenthesis_context);
+        errContext->tCloseParenthesis = pToken;
+        errContext->tOpenParenthesis = closeParContext->tOpenParenthesis;
+        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_CLOSE_PARENTHESIS, errContext);
+        return AST_NODE_STOP;
+    }
+    return AST_NODE_STOP;
 }
 
 char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack) {
@@ -638,7 +676,10 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 return AST_NODE_INVALID_PARENTHESIS;
             }
             (*pptToken)++;
-            char eRecurseBuildExpressions = build_expression_list(pptToken, vSyntaxErrors, is_close_parenthesis, &closingPar, &expressionList);
+            struct close_parenthesis_context closeParenthesisContext;
+            closeParenthesisContext.cExpectedCloseParenthesis = closingPar;
+            closeParenthesisContext.tOpenParenthesis = token;
+            char eRecurseBuildExpressions = build_expression_list(pptToken, vSyntaxErrors, is_close_parenthesis, &closeParenthesisContext, &expressionList);
             if (eRecurseBuildExpressions != AST_NODE_SUCCESS) return eRecurseBuildExpressions;
             struct ast_node* parNode;
             char eNewNode = new_ast_node(&parNode);
@@ -662,6 +703,13 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 return eAddPar;
             }
             lastTransformedTokenValidOperand = 1;
+            if ((**pptToken)->iKind == TOKEN_KIND_EOF) // break out of each loop in the recursion stack
+                --*pptToken; // i hate myself for this.. but it works :3
+            break;
+        case TOKEN_KIND_PAR_CLOSE:
+            INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_unmatched_close_parenthesis_context);
+            errContext->tCloseParenthesis = token;
+            REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_UNMATCHED_CLOSE_PARENTHESIS, errContext);
             break;
         }
     }

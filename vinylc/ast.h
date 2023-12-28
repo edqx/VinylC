@@ -41,12 +41,18 @@ struct syntax_error {
 #define SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT (short)3
 #define SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND (short)4
 #define SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER (short)5
+#define SYNTAX_ERROR_INVALID_CLOSE_PARENTHESIS (short)6
+#define SYNTAX_ERROR_UNMATCHED_CLOSE_PARENTHESIS (short)7
+#define SYNTAX_ERROR_UNMATCHED_OPEN_PARENTHESIS (short)8
 
 struct syntax_error_invalid_unary_operator_context { struct token* tToken; };
 struct syntax_error_expected_operator_context { struct token* tToken; };
 struct syntax_error_var_stmt_expected_assignment_context { struct token* tVarToken; struct ast_elem* aeOperator; };
 struct syntax_error_missing_right_hand_operand_context { struct token* tToken; };
 struct syntax_error_var_stmt_expected_identifier_context { struct token* tVarToken; struct ast_elem* aeLeftHandElem; };
+struct syntax_error_invalid_close_parenthesis_context { struct token* tOpenParenthesis; struct token* tCloseParenthesis; };
+struct syntax_error_unmatched_close_parenthesis_context { struct token* tCloseParenthesis; };
+struct syntax_error_unmatched_open_parenthesis_context { struct token* tOpenParenthesis; };
 
 #define INSTANCE_SYNTAX_ERROR_CONTEXT(VARNAME, CONTEXT_STRUCT) struct CONTEXT_STRUCT* VARNAME = (struct CONTEXT_STRUCT*)malloc(sizeof(struct CONTEXT_STRUCT))
 #define REGISTER_SYNTAX_ERROR(SYNTAX_ERRORS_STORE, VARNAME, ERROR_CODE, CONTEXT_VARNAME) struct syntax_error VARNAME = create_error(ERROR_CODE, CONTEXT_VARNAME);\
@@ -79,6 +85,9 @@ SYNTAX_ERROR_PRINT_FUNCTION(expected_operator, syntax_error_expected_operator_co
 SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_assignment, syntax_error_var_stmt_expected_assignment_context);
 SYNTAX_ERROR_PRINT_FUNCTION(missing_right_hand_operand, syntax_error_missing_right_hand_operand_context);
 SYNTAX_ERROR_PRINT_FUNCTION(var_stmt_expected_identifier, syntax_error_var_stmt_expected_identifier_context);
+SYNTAX_ERROR_PRINT_FUNCTION(invalid_close_parenthesis, syntax_error_invalid_close_parenthesis_context);
+SYNTAX_ERROR_PRINT_FUNCTION(unmatched_close_parenthesis, syntax_error_unmatched_close_parenthesis_context);
+SYNTAX_ERROR_PRINT_FUNCTION(unmatched_open_parenthesis, syntax_error_unmatched_open_parenthesis_context);
 
 struct ast_node create_ast_node();
 char new_ast_node(struct ast_node** out_anNode);
@@ -156,6 +165,11 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
 char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors);
 
 #define CONTINUE_AST_PREDICATE_FUNCTION(NAME) char NAME(struct token* pToken,struct vector* vSyntaxErrors, void* pCtx)
+
+struct close_parenthesis_context {
+    struct token* tOpenParenthesis;
+    char cExpectedCloseParenthesis;
+};
 
 CONTINUE_AST_PREDICATE_FUNCTION(is_eof_token);
 CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis);
