@@ -1,1 +1,4 @@
-4+2+2
+func sum(a: number, b: number) {
+    var d = a + b;
+    return d;
+}

@@ -291,12 +291,12 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
                 case '&': return AST_PRECEDENCE_OPERATOR_LOGIC_AND;
                 }
                 break;
-            case '@':
-                return AST_PRECEDENCE_OPERATOR_UNARY_PREF;
-                break;
+            case '@': return AST_PRECEDENCE_OPERATOR_UNARY_PREF;
         }
         break;
-    case TOKEN_KIND_IDENT: return AST_PRECEDENCE_STATEMENT;
+    case TOKEN_KIND_IDENT:
+        if (strcmp(tToken->pContent, "return") == 0) return AST_PRECEDENCE_STATEMENT_RETURN;
+        return AST_PRECEDENCE_STATEMENT;
     }
     return AST_PRECEDENCE_NIL;
 }
@@ -306,6 +306,7 @@ char get_keyword_operator_parse_mode(const char* pIdentStr) {
     if (len == 3 && strcmp(pIdentStr, "var") == 0) return OPERATOR_PARSE_MODE_VAR_STMT;
     if (len == 4 && strcmp(pIdentStr, "func") == 0) return OPERATOR_PARSE_MODE_FUNCTION_STMT;
     if (len == 4 && strcmp(pIdentStr, "type") == 0) return OPERATOR_PARSE_MODE_TYPE_STMT;
+    if (len == 6 && strcmp(pIdentStr, "return") == 0) return OPERATOR_PARSE_MODE_RETURN_STMT;
     return OPERATOR_PARSE_MODE_NIL;
 }
 
@@ -656,6 +657,39 @@ char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyn
     return AST_NODE_SUCCESS;
 }
 
+char eval_stack_pop_return_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tFunctionToken, struct ast_node** out_anNode) {
+    struct ast_elem* returnExpr = 0;
+    if (vEvalStack->uLength != 0) {
+        char ePop = vector_pop(vEvalStack, (void*)&returnExpr);
+        if (ePop != VECTOR_SUCCESS) return ePop;
+    }
+    
+    struct ast_node* returnNode = 0;
+    char eNewNode = new_ast_node(&returnNode);
+    if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+    char eInitNode = init_ast_node(returnNode, AST_NODE_KIND_RETURN_STMT, 1);
+    if (eInitNode != AST_NODE_SUCCESS) {
+        free(returnNode);
+        return eInitNode;
+    }
+
+    if (returnExpr != 0) {
+        char eReplace = replace_empty_node(returnNode, returnExpr, 0);
+        if (eReplace != AST_NODE_SUCCESS) {
+            free(returnNode);
+            return eReplace;
+        }
+    }
+
+    char eAppend = vector_append(vEvalStack, (void*)&returnNode);
+    if (eAppend != VECTOR_SUCCESS) {
+        free(returnNode);
+        return eAppend;
+    }
+    *out_anNode = returnNode;
+    return AST_NODE_SUCCESS;
+}
+
 char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode) {
     struct ast_elem* functionRef = 0;
     if (vEvalStack->uLength == 0) return AST_NODE_UNDEFINED_FUNCTION_CALL; // this should never happen
@@ -723,6 +757,9 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
             break;
         case OPERATOR_PARSE_MODE_TYPE_STMT:
             break;
+        case OPERATOR_PARSE_MODE_RETURN_STMT:
+            eStackPop = eval_stack_pop_return_stmt(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
+            break;
         }
         if (eStackPop != AST_NODE_SUCCESS) return eStackPop;
     }
@@ -754,31 +791,29 @@ CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis) {
     return AST_NODE_STOP;
 }
 
-char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors) {
+char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, char iPrecedence) {
     if (vOperatorStack->uLength > 0) {
-        char ePop = pop_greater_precedence(0, vOperatorStack, vEvalStack, vSyntaxErrors);
+        char ePop = pop_greater_precedence(iPrecedence, vOperatorStack, vEvalStack, vSyntaxErrors);
         if (ePop != AST_NODE_SUCCESS) return ePop;
     }
     
     if (vEvalStack->uLength > 0) {
         char eConcat = vector_append_concat(vExpressionList, vEvalStack);
         if (eConcat != VECTOR_SUCCESS) return eConcat;
-        char eClear1 = vector_clear(vOperatorStack);
+        char eClear1 = vector_clear(vEvalStack);
         if (eClear1 != VECTOR_SUCCESS) return eClear1;
-        char eClear2 = vector_clear(vEvalStack);
-        if (eClear2 != VECTOR_SUCCESS) return eClear2;
     }
     return AST_NODE_SUCCESS;
 }
 
 char build_expression_list_separator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken) {
-    char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors);
+    char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors, 0);
     if (eFlush != AST_NODE_SUCCESS) return eFlush;
     return AST_NODE_SUCCESS;
 }
 
-char build_expression_list_keyw(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char iParseMode) {
-    char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors);
+char build_expression_list_keyw(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char iParseMode, char iPrecedece) {
+    char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors, iPrecedece);
     if (eFlush != AST_NODE_SUCCESS) return eFlush;
     
     struct operator_pending_pop operatorPending;
@@ -869,7 +904,7 @@ char build_expression_list_par(struct vector* vExpressionList, struct vector* vO
         *out_bIsExpression = 0;
         char eAddBlock = vector_append(vEvalStack, (void*)&parNode);
         if (eAddBlock != VECTOR_SUCCESS) return eAddBlock;
-        char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors);
+        char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors, AST_PRECEDENCE_STATEMENT);
         if (eFlush != AST_NODE_SUCCESS) return eFlush;
         break;
     }
@@ -925,7 +960,8 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
         if (token->iKind == TOKEN_KIND_IDENT) {
             char parseMode = get_keyword_operator_parse_mode(token->pContent);
             if (parseMode != OPERATOR_PARSE_MODE_NIL) {
-                char eBuildKeyw = build_expression_list_keyw(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, parseMode);
+                char precedence = get_operator_precedence(token, parseMode);
+                char eBuildKeyw = build_expression_list_keyw(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, parseMode, precedence);
                 if (eBuildKeyw != AST_NODE_SUCCESS) {
                     deinit_vector(&operatorStack);
                     deinit_vector(&evalStack);
@@ -999,7 +1035,7 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
         return eContinuePredicate;
     }
 
-    char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors);
+    char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, 0);
     if (eFlush != AST_NODE_SUCCESS) return eFlush;
 
     deinit_vector(&operatorStack);
