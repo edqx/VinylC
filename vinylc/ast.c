@@ -239,8 +239,12 @@ char allocate_ast_literal_from_token(struct token* tToken, struct ast_literal** 
     return AST_NODE_SUCCESS;
 }
 
-char can_operator_be_unary(struct token* tToken) {
+char can_operator_be_unary_pref(struct token* tToken) {
     return tToken->pContent[0] == '+' || (tToken->pContent[0] == '-' && tToken->pContent[1] == '\0');
+}
+
+char can_operator_be_unary_suff(struct token* tToken) {
+    return 0;
 }
 
 char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
@@ -346,7 +350,7 @@ char get_parenthesis_node_construction_kind(char cOpenPar) {
     return AST_NODE_KIND_EMPTY;
 }
 
-char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode) {
+char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
     struct ast_elem* left = 0;
     if (vEvalStack->uLength == 0) {
@@ -354,10 +358,12 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
         context->tToken = tOperatorToken;
         REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND, context);
     } else {
-        char ePopRight = vector_pop(vEvalStack, (void*)&right);
-        if (ePopRight != VECTOR_SUCCESS) return ePopRight;
+        if (!bIsUnarySuff) {
+            char ePopRight = vector_pop(vEvalStack, (void*)&right);
+            if (ePopRight != VECTOR_SUCCESS) return ePopRight;
+        }
         
-        if (!bIsUnary) {
+        if (!bIsUnaryPref) {
             char ePopLeft = vector_pop(vEvalStack, (void*)&left);
             if (ePopLeft != VECTOR_SUCCESS) return ePopLeft;
         }
@@ -366,7 +372,7 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
     struct ast_node* operatorNode = 0;
     char eNewNode = new_ast_node(&operatorNode);
     if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
-    char eInitNode = init_ast_node(operatorNode, bIsUnary ? AST_NODE_KIND_UNARY_OPER : AST_NODE_KIND_BINARY_OPER, bIsUnary ? 2 : 3);
+    char eInitNode = init_ast_node(operatorNode, bIsUnaryPref ? AST_NODE_KIND_UNARY_OPER : AST_NODE_KIND_BINARY_OPER, (bIsUnarySuff && bIsUnaryPref) ? 1 : (bIsUnaryPref || bIsUnarySuff ? 2 : 3));
     if (eInitNode != AST_NODE_SUCCESS) {
         free(operatorNode);
         return eInitNode;
@@ -391,7 +397,7 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
         free(operatorLiteral);
         return eReplaceOperator;
     }
-    if (!bIsUnary && left != 0) {
+    if (!bIsUnaryPref && left != 0) {
         char eReplaceLeftOperand = replace_empty_node(operatorNode, left, 1);
         if (eReplaceLeftOperand != AST_NODE_SUCCESS) {
             free(operatorNode);
@@ -399,8 +405,8 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
             return eReplaceLeftOperand;
         }
     }
-    if (right != 0) {
-        char eReplaceRightOperand = replace_empty_node(operatorNode, right, bIsUnary ? 1 : 2);
+    if (!bIsUnarySuff && right != 0) {
+        char eReplaceRightOperand = replace_empty_node(operatorNode, right, bIsUnaryPref ? 1 : 2);
         if (eReplaceRightOperand != AST_NODE_SUCCESS) {
             free(operatorNode);
             free(operatorLiteral);
@@ -415,7 +421,13 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
         return eAppend;
     }
 
-    if (bIsUnary && !can_operator_be_unary(tOperatorToken)) {
+    if (bIsUnarySuff && !can_operator_be_unary_suff(tOperatorToken)) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_invalid_unary_operator_context);
+        context->tToken = tOperatorToken;
+        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_UNARY_OPERATOR, context);
+    }
+
+    if (bIsUnaryPref && !can_operator_be_unary_pref(tOperatorToken)) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_invalid_unary_operator_context);
         context->tToken = tOperatorToken;
         REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_UNARY_OPERATOR, context);
@@ -694,8 +706,8 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
         if (eLastOp != VECTOR_SUCCESS) return AST_NODE_FAIL;
 
         char p = get_operator_precedence(lastOperatorPending.tToken, lastOperatorPending.iOperatorParseMode);
-
         if (iPrecedence > p) break;
+
         char ePop = vector_pop(vOperatorStack, 0);
         if (ePop != VECTOR_SUCCESS) return ePop;
 
@@ -703,8 +715,11 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
         char eStackPop = AST_NODE_FAIL;
         switch (lastOperatorPending.iOperatorParseMode) {
         case OPERATOR_PARSE_MODE_BINARY:
-        case OPERATOR_PARSE_MODE_UNARY:
-            eStackPop = eval_stack_pop_operator(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY, &operatorNode);
+        case OPERATOR_PARSE_MODE_UNARY_PREF:
+        case OPERATOR_PARSE_MODE_UNARY_SUFF:
+            char isUnaryPref = lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY_PREF || lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE;
+            char isUnarySuff = lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY_SUFF | lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE;
+            eStackPop = eval_stack_pop_operator(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, isUnaryPref, isUnarySuff, &operatorNode);
             break;
         case OPERATOR_PARSE_MODE_VAR_STMT:
             eStackPop = eval_stack_pop_var_stmt(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
@@ -790,16 +805,16 @@ char build_expression_list_literal(struct vector* vExpressionList, struct vector
     return AST_NODE_SUCCESS;
 }
 
-char build_expression_list_operator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char bIsUnary) {
+char build_expression_list_operator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char bIsUnaryPref) {
     if (vOperatorStack->uLength > 0) {
-        char p = get_operator_precedence(tToken, bIsUnary ? OPERATOR_PARSE_MODE_UNARY : OPERATOR_PARSE_MODE_BINARY);
+        char p = get_operator_precedence(tToken, bIsUnaryPref ? OPERATOR_PARSE_MODE_UNARY_PREF : OPERATOR_PARSE_MODE_BINARY);
         char ePop = pop_greater_precedence(p, vOperatorStack, vEvalStack, vSyntaxErrors);
         if (ePop != AST_NODE_SUCCESS) return ePop;
     }
 
     struct operator_pending_pop operatorPending;
     operatorPending.tToken = tToken;
-    operatorPending.iOperatorParseMode = bIsUnary ? OPERATOR_PARSE_MODE_UNARY : OPERATOR_PARSE_MODE_BINARY;
+    operatorPending.iOperatorParseMode = bIsUnaryPref ? OPERATOR_PARSE_MODE_STANDALONE : OPERATOR_PARSE_MODE_UNARY_SUFF;
     char eAddOp = vector_append(vOperatorStack, (void*)&operatorPending);
     if (eAddOp != VECTOR_SUCCESS) return eAddOp;
     return AST_NODE_SUCCESS;
@@ -869,6 +884,23 @@ char build_expression_list_par(struct vector* vExpressionList, struct vector* vO
     return AST_NODE_SUCCESS;
 }
 
+char give_operator_following_expression(struct vector* vOperatorStack) {
+    if (vOperatorStack->uLength > 0) {
+        struct operator_pending_pop* lastOpRef = 0;
+        char eGetRef = vector_at_ref(vOperatorStack, vOperatorStack->uLength - 1, (void**)&lastOpRef);
+        if (eGetRef != AST_NODE_SUCCESS) return eGetRef;
+        switch (lastOpRef->iOperatorParseMode) {
+        case OPERATOR_PARSE_MODE_STANDALONE:
+            lastOpRef->iOperatorParseMode = OPERATOR_PARSE_MODE_UNARY_PREF;
+            break;
+        case OPERATOR_PARSE_MODE_UNARY_SUFF:
+            lastOpRef->iOperatorParseMode = OPERATOR_PARSE_MODE_BINARY;
+            break;
+        }
+    }
+    return AST_NODE_SUCCESS;
+}
+
 char build_expression_list(struct token*** pptToken, struct vector* vSyntaxErrors, CONTINUE_AST_PREDICATE_FUNCTION((*fpContinuePredicate)), void* pCtx, struct vector* out_vExpressionList) {
     char eInit = init_vector(out_vExpressionList, 512, sizeof(struct ast_elem*));
     if (eInit != VECTOR_SUCCESS) return AST_NODE_FAIL;
@@ -925,6 +957,12 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 return eBuildLiteral;
             }
             lastTransformedTokenValidOperand = 1;
+            char eSuffixOperators = give_operator_following_expression(&operatorStack);
+            if (eSuffixOperators != AST_NODE_SUCCESS) {
+                deinit_vector(&operatorStack);
+                deinit_vector(&evalStack);
+                return eBuildLiteral;
+            }
             break;
         case TOKEN_KIND_OPERATOR:
             char eBuildOper = build_expression_list_operator(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, !lastTransformedTokenValidOperand);
@@ -944,6 +982,14 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 return eBuildPar;
             }
             lastTransformedTokenValidOperand = isExpression;
+            if (isExpression) {
+                char eSuffixOperators = give_operator_following_expression(&operatorStack);
+                if (eSuffixOperators != AST_NODE_SUCCESS) {
+                    deinit_vector(&operatorStack);
+                    deinit_vector(&evalStack);
+                    return eBuildLiteral;
+                }
+            }
             break;
         case TOKEN_KIND_PAR_CLOSE:
             INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_unmatched_close_parenthesis_context);
@@ -970,6 +1016,7 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
 char build_stmt_list_node(struct token** ptToken, struct vector* vSyntaxErrors, struct ast_node** out_anStmtListNode) {
     struct vector expressionList = create_vector();
     char eBuildExpressionList = build_expression_list(&ptToken, vSyntaxErrors, is_eof_token, 0, &expressionList);
+    if (eBuildExpressionList != AST_NODE_SUCCESS) return eBuildExpressionList;
 
     char eNewNode = new_ast_node(out_anStmtListNode);
     if (eNewNode != AST_NODE_SUCCESS) return eNewNode;

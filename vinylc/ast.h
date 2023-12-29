@@ -119,14 +119,17 @@ char init_ast_literal(struct ast_literal* alSelf, char iLiteralKind, struct toke
 char get_literal_token_kind(struct token* tToken);
 char allocate_ast_literal_from_token(struct token* tToken, struct ast_literal** out_alLiteral);
 
-char can_operator_be_unary(struct token* tToken);
+char can_operator_be_unary_pref(struct token* tToken);
+char can_operator_be_unary_suff(struct token* tToken);
 
 #define OPERATOR_PARSE_MODE_NIL (char)0
 #define OPERATOR_PARSE_MODE_BINARY (char)1
-#define OPERATOR_PARSE_MODE_UNARY (char)2
-#define OPERATOR_PARSE_MODE_VAR_STMT (char)3
-#define OPERATOR_PARSE_MODE_FUNCTION_STMT (char)4
-#define OPERATOR_PARSE_MODE_TYPE_STMT (char)5
+#define OPERATOR_PARSE_MODE_UNARY_PREF (char)2
+#define OPERATOR_PARSE_MODE_UNARY_SUFF (char)3
+#define OPERATOR_PARSE_MODE_STANDALONE (char)4
+#define OPERATOR_PARSE_MODE_VAR_STMT (char)5
+#define OPERATOR_PARSE_MODE_FUNCTION_STMT (char)6
+#define OPERATOR_PARSE_MODE_TYPE_STMT (char)7
 
 #define AST_PRECEDENCE_NIL (char)0
 #define AST_PRECEDENCE_STATEMENT (char)1
@@ -143,11 +146,6 @@ char can_operator_be_unary(struct token* tToken);
 
 char get_operator_precedence(struct token* tToken, char iOperatorParseMode);
 char get_keyword_operator_parse_mode(const char* pIdentStr);
-
-struct operator_pending_pop {
-    struct token* tToken;
-    char iOperatorParseMode;
-};
 
 #define AST_ELEM_GET_FUNCTION(NODE_KIND_NAME, SON_NAME) char get_##NODE_KIND_NAME##_##SON_NAME(struct ast_elem* aeElem, struct ast_elem** out_aeElem)
 #define AST_ELEM_GET_FUNCTION_IMPL(NODE_KIND, SON_IDX) {\
@@ -181,7 +179,12 @@ AST_ELEM_GET_FUNCTION(call, params);
 char get_matching_close_parenthesis(char cOpenPar);
 char get_parenthesis_node_construction_kind(char cOpenPar);
 
-char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnary, struct ast_node** out_anNode);
+struct operator_pending_pop {
+    struct token* tToken;
+    char iOperatorParseMode;
+};
+
+char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode);
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode);
 char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tFunctionToken, struct ast_node** out_anNode);
 char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode);
@@ -189,20 +192,21 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
 
 #define CONTINUE_AST_PREDICATE_FUNCTION(NAME) char NAME(struct token* pToken, struct vector* vSyntaxErrors, void* pCtx)
 
+CONTINUE_AST_PREDICATE_FUNCTION(is_eof_token);
+CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis);
+
 struct close_parenthesis_context {
     struct token* tOpenParenthesis;
     char cExpectedCloseParenthesis;
 };
 
-CONTINUE_AST_PREDICATE_FUNCTION(is_eof_token);
-CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis);
-
 char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors);
 char build_expression_list_separator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken);
 char build_expression_list_keyw(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char iParseMode);
 char build_expression_list_literal(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken);
-char build_expression_list_operator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char bIsUnary);
+char build_expression_list_operator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char bIsUnaryPref);
 char build_expression_list_par(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, struct token*** pptToken, char bSucceedsEval, char* out_bIsExpression);
+char give_operator_following_expression(struct vector* vOperatorStack);
 char build_expression_list(struct token*** pptToken, struct vector* vSyntaxErrors, CONTINUE_AST_PREDICATE_FUNCTION((*fpContinuePredicate)), void *pCtx, struct vector* out_vExpressionList);
 char build_stmt_list_node(struct token** ptToken, struct vector* vSyntaxErrors, struct ast_node** out_anStmtListNode);
 
