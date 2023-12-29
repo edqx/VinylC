@@ -251,62 +251,47 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
     switch (tToken->iKind) {
     case TOKEN_KIND_OPERATOR:
         switch (tToken->pContent[0]) {
-            case '.':
-                return AST_PRECEDENCE_OPERATOR_ACCESS;
+            case '.': return AST_PRECEDENCE_OPERATOR_ACCESS;
             case '-':
                 switch (tToken->pContent[1]) {
-                case '\0': // "-"
-                    return iOperatorParseMode == OPERATOR_PARSE_MODE_BINARY ? AST_PRECEDENCE_OPERATOR_ADD : AST_PRECEDENCE_OPERATOR_UNARY_PREF;
-                case '>': // "->"
-                    return AST_PRECEDENCE_OPERATOR_ACCESS;
+                case '\0': return iOperatorParseMode == OPERATOR_PARSE_MODE_BINARY ? AST_PRECEDENCE_OPERATOR_ADD : AST_PRECEDENCE_OPERATOR_UNARY_PREF;
+                case '>': return AST_PRECEDENCE_OPERATOR_ACCESS;
                 }
                 break;
             case '=':
                 switch (tToken->pContent[1]) {
-                case '\0': // "="
-                    return AST_PRECEDENCE_OPERATOR_ASSIGN;
-                case '=': // "=="
-                    return AST_PRECEDENCE_OPERATOR_EQUAL;
+                case '\0': return AST_PRECEDENCE_OPERATOR_ASSIGN;
+                case '=': return AST_PRECEDENCE_OPERATOR_EQUAL;
                 }
                 break;
             case '>':
                 switch (tToken->pContent[1]) {
-                case '=': // >=
-                    return AST_PRECEDENCE_OPERATOR_COMPARE;
+                case '=': return AST_PRECEDENCE_OPERATOR_COMPARE;
                 }
                 break;
             case '<':
                 switch (tToken->pContent[1]) {
-                case '=': // <=
-                    return AST_PRECEDENCE_OPERATOR_COMPARE;
+                case '=': return AST_PRECEDENCE_OPERATOR_COMPARE;
                 }
                 break;
-            case '+':
-                return AST_PRECEDENCE_OPERATOR_ADD;
-            case '*':
-                return AST_PRECEDENCE_OPERATOR_MUL;
-            case '/':
-                return AST_PRECEDENCE_OPERATOR_MUL;
-            case '%':
-                return AST_PRECEDENCE_OPERATOR_MUL;
+            case '+': return AST_PRECEDENCE_OPERATOR_ADD;
+            case '*': return AST_PRECEDENCE_OPERATOR_MUL;
+            case '/': return AST_PRECEDENCE_OPERATOR_MUL;
+            case '%': return AST_PRECEDENCE_OPERATOR_MUL;
             case '|':
                 switch (tToken->pContent[1]) {
-                case '|': // "||"
-                    return AST_PRECEDENCE_OPERATOR_LOGIC_OR;
+                case '|': return AST_PRECEDENCE_OPERATOR_LOGIC_OR;
                 }
                 break;
             case '&':
                 switch (tToken->pContent[1]) {
-                case '\0': // "&"
-                    return AST_PRECEDENCE_OPERATOR_CONCAT;
-                case '&': // "&&"
-                    return AST_PRECEDENCE_OPERATOR_LOGIC_AND;
+                case '\0': return AST_PRECEDENCE_OPERATOR_CONCAT;
+                case '&': return AST_PRECEDENCE_OPERATOR_LOGIC_AND;
                 }
                 break;
         }
         break;
-        case TOKEN_KIND_IDENT:
-            return AST_PRECEDENCE_STATEMENT;
+    case TOKEN_KIND_IDENT: return AST_PRECEDENCE_STATEMENT;
     }
     return AST_PRECEDENCE_NIL;
 }
