@@ -25,6 +25,7 @@ void print_error(const char* pFileContent, struct syntax_error seSyntaxError) {
     case SYNTAX_ERROR_MISSING_FUNCTION_IMPL: SYNTAX_ERROR_PRINT(pFileContent, missing_function_impl, syntax_error_missing_function_impl_context, seSyntaxError); break;
     case SYNTAX_ERROR_MISSING_FUNCTION_DECL: SYNTAX_ERROR_PRINT(pFileContent, missing_function_decl, syntax_error_missing_function_decl_context, seSyntaxError); break;
     case SYNTAX_ERROR_INVALID_FUNCTION_DECL: SYNTAX_ERROR_PRINT(pFileContent, invalid_function_decl, syntax_error_invalid_function_decl_context, seSyntaxError); break;
+    case SYNTAX_ERROR_INVALID_FUNCTION_NAME: SYNTAX_ERROR_PRINT(pFileContent, invalid_function_name, syntax_error_invalid_function_name_context, seSyntaxError); break;
     default:
         printf("\x1b[91m[ERROR]: %i <not printed>\x1b[0m\n", seSyntaxError.uErrorCode);
         break;
@@ -112,25 +113,37 @@ SYNTAX_ERROR_PRINT_FUNCTION(missing_function_impl, syntax_error_missing_function
     } else if (range != 0) {
         printf("\x1b[91m[ERROR]: Expected implementation of function at %i\x1b[0m\n", range->uEndIdx);
     } else {
-        printf("\x1b[91m[ERROR]: Expected function implementation following '%s' at %i..%i\x1b[0m\n", pContext->tProcToken->pContent,
-            pContext->tProcToken->fiirFileRange.uStartIdx, pContext->tProcToken->fiirFileRange.uEndIdx);
+        printf("\x1b[91m[ERROR]: Expected function implementation following '%s' at %i..%i\x1b[0m\n", pContext->tFunctionToken->pContent,
+            pContext->tFunctionToken->fiirFileRange.uStartIdx, pContext->tFunctionToken->fiirFileRange.uEndIdx);
     }
     if (range != 0) free(range);
 }
 
 SYNTAX_ERROR_PRINT_FUNCTION(missing_function_decl, syntax_error_missing_function_decl_context) {
-    printf("\x1b[91m[ERROR]: Expected function declaration following '%s' at %i..%i\x1b[0m\n", pContext->tProcToken->pContent,
-        pContext->tProcToken->fiirFileRange.uStartIdx, pContext->tProcToken->fiirFileRange.uEndIdx);
+    printf("\x1b[91m[ERROR]: Expected function declaration following '%s' at %i..%i\x1b[0m\n", pContext->tFunctionToken->pContent,
+        pContext->tFunctionToken->fiirFileRange.uStartIdx, pContext->tFunctionToken->fiirFileRange.uEndIdx);
 }
 
 SYNTAX_ERROR_PRINT_FUNCTION(invalid_function_decl, syntax_error_invalid_function_decl_context) {
     struct file_input_idx_range* range = 0;
     if (pContext->aeFunctionDecl != 0) recursive_get_ast_range(pContext->aeFunctionDecl, &range);
     if (range == 0) {
-        printf("\x1b[91m[ERROR]: Invalid function declaration following '%s' at %i..%i\x1b[0m\n", pContext->tProcToken->pContent,
-            pContext->tProcToken->fiirFileRange.uStartIdx, pContext->tProcToken->fiirFileRange.uEndIdx);
+        printf("\x1b[91m[ERROR]: Invalid function declaration following '%s' at %i..%i\x1b[0m\n", pContext->tFunctionToken->pContent,
+            pContext->tFunctionToken->fiirFileRange.uStartIdx, pContext->tFunctionToken->fiirFileRange.uEndIdx);
     } else {
         printf("\x1b[91m[ERROR]: Invalid function declaration at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
+        free(range);
+    }
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(invalid_function_name, syntax_error_invalid_function_name_context) {
+    struct file_input_idx_range* range = 0;
+    if (pContext->aeFunctionRef != 0) recursive_get_ast_range(pContext->aeFunctionRef, &range);
+    if (range == 0) {
+        printf("\x1b[91m[ERROR]: Invalid function name following '%s' at %i..%i\x1b[0m\n", pContext->tFunctionToken->pContent,
+            pContext->tFunctionToken->fiirFileRange.uStartIdx, pContext->tFunctionToken->fiirFileRange.uEndIdx);
+    } else {
+        printf("\x1b[91m[ERROR]: Invalid function name at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
         free(range);
     }
 }
@@ -297,7 +310,7 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
 char get_keyword_operator_parse_mode(const char* pIdentStr) {
     unsigned int len = strlen(pIdentStr);
     if (len == 3 && strcmp(pIdentStr, "var") == 0) return OPERATOR_PARSE_MODE_VAR_STMT;
-    if (len == 4 && strcmp(pIdentStr, "proc") == 0) return OPERATOR_PARSE_MODE_PROC_STMT;
+    if (len == 4 && strcmp(pIdentStr, "func") == 0) return OPERATOR_PARSE_MODE_FUNCTION_STMT;
     if (len == 4 && strcmp(pIdentStr, "type") == 0) return OPERATOR_PARSE_MODE_TYPE_STMT;
     return OPERATOR_PARSE_MODE_NIL;
 }
@@ -518,7 +531,7 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
     return AST_NODE_SUCCESS;
 }
 
-char eval_stack_pop_proc_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tProcToken, struct ast_node** out_anNode) {
+char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tFunctionToken, struct ast_node** out_anNode) {
     struct ast_elem* functionCall = 0;
     if (vEvalStack->uLength != 0) {
         char eShift = vector_shift(vEvalStack, &functionCall);
@@ -539,21 +552,102 @@ char eval_stack_pop_proc_decl(struct vector* vEvalStack, struct vector* vSyntaxE
     
     if (functionCall == 0) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_missing_function_decl_context);
-        errContext->tProcToken = tProcToken;
+        errContext->tFunctionToken = tFunctionToken;
         REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_MISSING_FUNCTION_DECL, errContext);
     } else if (functionCall->iKind != AST_NODE_KIND_CALL) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_invalid_function_decl_context);
-        errContext->tProcToken = tProcToken;
+        errContext->tFunctionToken = tFunctionToken;
         errContext->aeFunctionDecl = functionCall;
         REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_FUNCTION_DECL, errContext);
     }
     if (functionCall != 0 && (codeBlock == 0 || codeBlock->iKind != AST_NODE_KIND_BLOCK)) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_missing_function_impl_context);
-        errContext->tProcToken = tProcToken;
+        errContext->tFunctionToken = tFunctionToken;
         errContext->aeFunctionCall = functionCall;
         errContext->alFunctionName = 0;
         REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_MISSING_FUNCTION_IMPL, errContext);
     }
+    
+    struct ast_node* functionDeclNode = 0;
+    char eNewNode = new_ast_node(&functionDeclNode);
+    if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+    char eInitNode = init_ast_node(functionDeclNode, AST_NODE_KIND_FUNCTION_DECL_STMT, 4);
+    if (eInitNode != AST_NODE_SUCCESS) {
+        free(functionDeclNode);
+        return eInitNode;
+    }
+
+    struct ast_literal* functionTypeLiteral = 0;
+    char eNewLiteral = new_ast_literal(&functionTypeLiteral);
+    if (eNewLiteral != AST_NODE_SUCCESS) {
+        free(functionDeclNode);
+        return eNewLiteral;
+    }
+
+    char eInitliteral = init_ast_literal(functionTypeLiteral, AST_LITERAL_KIND_IDENT, tFunctionToken);
+    if (eInitliteral != AST_NODE_SUCCESS) {
+        free(functionDeclNode);
+        free(functionTypeLiteral);
+        return eInitliteral;
+    }
+    
+    char eReplace1 = replace_empty_node(functionDeclNode, (struct ast_elem*)functionTypeLiteral, 0);
+    if (eReplace1 != VECTOR_SUCCESS) {
+        free(functionDeclNode);
+        free(functionTypeLiteral);
+        return eReplace1;
+    }
+
+    if (callNode != 0) {
+        struct ast_elem* callFunctionRef = 0;
+        struct ast_elem* callParams = 0;
+        char eGetFunctionRef = get_call_function_ref((struct ast_elem*)callNode, &callFunctionRef);
+        if (eGetFunctionRef != AST_NODE_SUCCESS) {
+            free(functionDeclNode);
+            free(functionTypeLiteral);
+            return eGetFunctionRef;
+        }
+        char eGetFunctionParams = get_call_params((struct ast_elem*)callNode, &callParams);
+        char eReplace1 = replace_empty_node(functionDeclNode, callFunctionRef, 1);
+        if (eReplace1 != VECTOR_SUCCESS) {
+            free(functionDeclNode);
+            free(functionTypeLiteral);
+            return eReplace1;
+        }
+        char eReplace2 = replace_empty_node(functionDeclNode, callParams, 2);
+        if (eReplace2 != VECTOR_SUCCESS) {
+            free(functionDeclNode);
+            free(functionTypeLiteral);
+            return eReplace2;
+        }
+
+        if (callFunctionRef->iKind != AST_NODE_KIND_LITERAL || ((struct ast_literal*)callFunctionRef)->iLiteralKind != AST_LITERAL_KIND_IDENT) {
+            INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_invalid_function_name_context);
+            errContext->tFunctionToken = tFunctionToken;
+            errContext->aeFunctionRef = callFunctionRef;
+            REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_FUNCTION_NAME, errContext);
+        }
+
+        free(callNode);
+    }
+
+    if (codeBlock != 0 && codeBlock->iKind == AST_NODE_KIND_BLOCK) {
+        char eReplace = replace_empty_node(functionDeclNode, codeBlock, 3);
+        if (eReplace != VECTOR_SUCCESS) {
+            free(functionDeclNode);
+            free(functionTypeLiteral);
+            return eReplace;
+        }
+    }
+
+    char eAppend = vector_unshift(vEvalStack, (void*)&functionDeclNode);
+    if (eAppend != VECTOR_SUCCESS) {
+        free(functionDeclNode);
+        free(functionTypeLiteral);
+        return eAppend;
+    }
+
+    *out_anNode = functionDeclNode;
     return AST_NODE_SUCCESS;
 }
 
@@ -615,8 +709,8 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
         case OPERATOR_PARSE_MODE_VAR_STMT:
             eStackPop = eval_stack_pop_var_stmt(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
             break;
-        case OPERATOR_PARSE_MODE_PROC_STMT:
-            eStackPop = eval_stack_pop_proc_decl(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
+        case OPERATOR_PARSE_MODE_FUNCTION_STMT:
+            eStackPop = eval_stack_pop_function_decl(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
             break;
         case OPERATOR_PARSE_MODE_TYPE_STMT:
             break;
