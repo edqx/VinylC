@@ -252,9 +252,12 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
     case TOKEN_KIND_OPERATOR:
         switch (tToken->pContent[0]) {
             case '.': return AST_PRECEDENCE_OPERATOR_ACCESS;
+            case '+':
             case '-':
                 switch (tToken->pContent[1]) {
-                case '\0': return iOperatorParseMode == OPERATOR_PARSE_MODE_BINARY ? AST_PRECEDENCE_OPERATOR_ADD : AST_PRECEDENCE_OPERATOR_UNARY_PREF;
+                case '\0':
+                    if (iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE) return AST_PRECEDENCE_OPERATOR_ADD;
+                    return iOperatorParseMode == OPERATOR_PARSE_MODE_BINARY ? AST_PRECEDENCE_OPERATOR_ADD : AST_PRECEDENCE_OPERATOR_UNARY_PREF;
                 case '>': return AST_PRECEDENCE_OPERATOR_ACCESS;
                 }
                 break;
@@ -274,7 +277,6 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
                 case '=': return AST_PRECEDENCE_OPERATOR_COMPARE;
                 }
                 break;
-            case '+': return AST_PRECEDENCE_OPERATOR_ADD;
             case '*': return AST_PRECEDENCE_OPERATOR_MUL;
             case '/': return AST_PRECEDENCE_OPERATOR_MUL;
             case '%': return AST_PRECEDENCE_OPERATOR_MUL;
@@ -708,6 +710,7 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
         case OPERATOR_PARSE_MODE_BINARY:
         case OPERATOR_PARSE_MODE_UNARY_PREF:
         case OPERATOR_PARSE_MODE_UNARY_SUFF:
+        case OPERATOR_PARSE_MODE_STANDALONE:
             char isUnaryPref = lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY_PREF || lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE;
             char isUnarySuff = lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY_SUFF | lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE;
             eStackPop = eval_stack_pop_operator(vOperatorStack, vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, isUnaryPref, isUnarySuff, &operatorNode);

@@ -141,8 +141,9 @@ char can_operator_be_unary_suff(struct token* tToken);
 #define AST_PRECEDENCE_OPERATOR_CONCAT (char)7
 #define AST_PRECEDENCE_OPERATOR_ADD (char)8
 #define AST_PRECEDENCE_OPERATOR_MUL (char)9
-#define AST_PRECEDENCE_OPERATOR_UNARY_PREF (char)10
-#define AST_PRECEDENCE_OPERATOR_ACCESS (char)11
+#define AST_PRECEDENCE_OPERATOR_UNARY_SUFF (char)10
+#define AST_PRECEDENCE_OPERATOR_UNARY_PREF (char)11
+#define AST_PRECEDENCE_OPERATOR_ACCESS (char)12
 
 char get_operator_precedence(struct token* tToken, char iOperatorParseMode);
 char get_keyword_operator_parse_mode(const char* pIdentStr);
