@@ -240,7 +240,7 @@ char allocate_ast_literal_from_token(struct token* tToken, struct ast_literal** 
 }
 
 char can_operator_be_unary_pref(struct token* tToken) {
-    return tToken->pContent[0] == '+' || (tToken->pContent[0] == '-' && tToken->pContent[1] == '\0');
+    return tToken->pContent[0] == '+' || (tToken->pContent[0] == '-' && tToken->pContent[1] == '\0') || tToken->pContent[0] == '@';
 }
 
 char can_operator_be_unary_suff(struct token* tToken) {
@@ -289,6 +289,9 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
                 case '&': return AST_PRECEDENCE_OPERATOR_LOGIC_AND;
                 }
                 break;
+            case '@':
+                return AST_PRECEDENCE_OPERATOR_UNARY_PREF;
+                break;
         }
         break;
     case TOKEN_KIND_IDENT: return AST_PRECEDENCE_STATEMENT;
@@ -335,7 +338,7 @@ char get_parenthesis_node_construction_kind(char cOpenPar) {
     return AST_NODE_KIND_EMPTY;
 }
 
-char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode) {
+char eval_stack_pop_operator(struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
     struct ast_elem* left = 0;
     if (vEvalStack->uLength == 0) {
@@ -417,6 +420,9 @@ char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxEr
         context->tToken = tOperatorToken;
         REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_UNARY_OPERATOR, context);
     }
+
+    char eSuffixOperators = give_operator_following_expression(vOperatorStack);
+    if (eSuffixOperators != AST_NODE_SUCCESS) return eSuffixOperators;
 
     *out_anNode = operatorNode;
     return AST_NODE_SUCCESS;
@@ -704,7 +710,7 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
         case OPERATOR_PARSE_MODE_UNARY_SUFF:
             char isUnaryPref = lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY_PREF || lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE;
             char isUnarySuff = lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY_SUFF | lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE;
-            eStackPop = eval_stack_pop_operator(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, isUnaryPref, isUnarySuff, &operatorNode);
+            eStackPop = eval_stack_pop_operator(vOperatorStack, vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, isUnaryPref, isUnarySuff, &operatorNode);
             break;
         case OPERATOR_PARSE_MODE_VAR_STMT:
             eStackPop = eval_stack_pop_var_stmt(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);

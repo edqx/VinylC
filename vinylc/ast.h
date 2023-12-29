@@ -184,7 +184,7 @@ struct operator_pending_pop {
     char iOperatorParseMode;
 };
 
-char eval_stack_pop_operator(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode);
+char eval_stack_pop_operator(struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode);
 char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode);
 char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tFunctionToken, struct ast_node** out_anNode);
 char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode);

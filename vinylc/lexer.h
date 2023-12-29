@@ -78,7 +78,6 @@ char close_and_retreat_read_session(struct read_session* rsSelf);
 #define TOKEN_KIND_PAR_CLOSE (char)6
 #define TOKEN_KIND_OPERATOR (char)7
 #define TOKEN_KIND_SEPARATOR (char)8
-#define TOKEN_KIND_REFERENCE (char)9
 
 struct token {
     char iKind;
@@ -108,6 +107,5 @@ READ_TOKEN_FUNCTION(par_open);
 READ_TOKEN_FUNCTION(par_close);
 READ_TOKEN_FUNCTION(operator);
 READ_TOKEN_FUNCTION(separator);
-READ_TOKEN_FUNCTION(reference);
 
 #endif // LEXER_H

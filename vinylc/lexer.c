@@ -272,7 +272,7 @@ READ_TOKEN_FUNCTION(next) {
     T_READ_TOKEN_FUNCTION((*token_readers[])) =
         { &read_token_ident, &read_token_number, &read_token_string,
         &read_token_par_open, &read_token_par_close, &read_token_operator,
-        &read_token_separator, &read_token_reference };
+        &read_token_separator };
     int numReads = sizeof(token_readers) / sizeof(token_readers[0]);
 
     for (int i = 0; i < numReads; i++) {
@@ -550,16 +550,11 @@ READ_TOKEN_FUNCTION(par_close) {
 }
 
 READ_TOKEN_FUNCTION(operator) {
-    const char* operatorSet[] = { ".", "->", "==", "=", ">=", "<=", "+", "-", "*", "/", "%", "&&", "||", "&" };
+    const char* operatorSet[] = { ".", "->", "==", "=", ">=", "<=", "+", "-", "*", "/", "%", "&&", "||", "&", "@", ":" };
     return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_OPERATOR, operatorSet, sizeof(operatorSet) / sizeof(const char*));
 }
 
 READ_TOKEN_FUNCTION(separator) {
     const char* separatorSet[] = { ",", ";" };
     return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_SEPARATOR, separatorSet, sizeof(separatorSet) / sizeof(const char*));
-}
-
-READ_TOKEN_FUNCTION(reference) {
-    const char* referenceSet[] = { "@" };
-    return read_token_enum(irReader, ldDefect, out_tToken, TOKEN_KIND_REFERENCE, referenceSet, sizeof(referenceSet) / sizeof(const char*));
 }
