@@ -319,6 +319,7 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
                 }
                 break;
             case '@': return AST_PRECEDENCE_OPERATOR_UNARY_PREF;
+            case ':': return AST_PRECEDENCE_OPERATOR_EQUAL;
         }
         break;
     case TOKEN_KIND_IDENT:
@@ -339,7 +340,7 @@ char get_keyword_operator_parse_mode(const char* pIdentStr) {
             if (strcmp(pIdentStr, "var") == 0) return OPERATOR_PARSE_MODE_VAR_STMT;
             break;
         case 4:
-            if (strcmp(pIdentStr, "func") == 0) return OPERATOR_PARSE_MODE_IF_STMT;
+            if (strcmp(pIdentStr, "func") == 0) return OPERATOR_PARSE_MODE_FUNCTION_STMT;
             if (strcmp(pIdentStr, "type") == 0) return OPERATOR_PARSE_MODE_TYPE_STMT;
             if (strcmp(pIdentStr, "else") == 0) return OPERATOR_PARSE_MODE_ELSE_STMT;
             break;
@@ -626,9 +627,24 @@ char eval_stack_pop_function_decl(struct expression_list_builder* elbBuilder, st
     }
 
     struct ast_node* callNode = 0;
+    struct ast_elem* returnType = 0;
     struct ast_node* blockNode = 0;
-    if (functionCall != 0 && functionCall->iKind == AST_NODE_KIND_CALL)
-        callNode = (struct ast_node*)functionCall;
+    if (functionCall != 0) {
+        if (functionCall->iKind == AST_NODE_KIND_BINARY_OPER) {
+            const char* operator = 0;
+            char eGetOperator = get_binary_operator_operator(functionCall, &operator);
+            if (eGetOperator != AST_NODE_SUCCESS) return eGetOperator;
+            if (operator[0] == ':') {
+                char eRight = get_binary_operator_right_operand(functionCall, &returnType);
+                if (eRight != AST_NODE_SUCCESS) return eRight;
+                char eLeft = get_binary_operator_left_operand(functionCall, &functionCall);
+                if (eLeft != AST_NODE_SUCCESS) return eLeft;
+            }
+        }
+        if (functionCall->iKind == AST_NODE_KIND_CALL) {
+            callNode = (struct ast_node*)functionCall;
+        }
+    }
     if (codeBlock != 0)
         blockNode = (struct ast_node*)codeBlock;
     
@@ -653,7 +669,7 @@ char eval_stack_pop_function_decl(struct expression_list_builder* elbBuilder, st
     struct ast_node* functionDeclNode = 0;
     char eNewNode = new_ast_node(&functionDeclNode);
     if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
-    char eInitNode = init_ast_node(functionDeclNode, AST_NODE_KIND_FUNCTION_DECL_STMT, 4);
+    char eInitNode = init_ast_node(functionDeclNode, AST_NODE_KIND_FUNCTION_DECL_STMT, 5);
     if (eInitNode != AST_NODE_SUCCESS) {
         free(functionDeclNode);
         return eInitNode;
@@ -713,8 +729,17 @@ char eval_stack_pop_function_decl(struct expression_list_builder* elbBuilder, st
         free(callNode);
     }
 
+    if (returnType != 0) {
+        char eReplace1 = replace_empty_node(functionDeclNode, (struct ast_elem*)returnType, 3);
+        if (eReplace1 != VECTOR_SUCCESS) {
+            free(functionDeclNode);
+            free(functionTypeLiteral);
+            return eReplace1;
+        }
+    }
+
     if (codeBlock != 0 && codeBlock->iKind == AST_NODE_KIND_BLOCK) {
-        char eReplace = replace_empty_node(functionDeclNode, codeBlock, 3);
+        char eReplace = replace_empty_node(functionDeclNode, codeBlock, 4);
         if (eReplace != VECTOR_SUCCESS) {
             free(functionDeclNode);
             free(functionTypeLiteral);
@@ -1084,6 +1109,10 @@ char build_expression_list_par(struct expression_list_builder* elbBuilder, struc
     char closingPar = get_matching_close_parenthesis(tToken->pContent[0]);
     if (closingPar == '\0') return AST_NODE_INVALID_PARENTHESIS;
     (*pptToken)++;
+    if (tToken->pContent[0] == '{') {
+        char ePop = pop_greater_precedence(elbBuilder, AST_PRECEDENCE_STATEMENT_ELSE);
+        if (ePop != AST_NODE_SUCCESS) return ePop;
+    }
     struct close_parenthesis_context closeParenthesisContext;
     closeParenthesisContext.cExpectedCloseParenthesis = closingPar;
     closeParenthesisContext.tOpenParenthesis = tToken;
