@@ -16,6 +16,7 @@ struct vector {
 };
 
 struct vector create_vector();
+struct vector* new_vector();
 char vector_assert_not_initialized(struct vector* vSelf);
 char init_vector(struct vector* vSelf, unsigned int uCapacity, unsigned int uElementSz);
 char vector_expand(struct vector* vSelf, unsigned int uNewCapacity);

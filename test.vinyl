@@ -1,4 +1,9 @@
-func sum(a: number, b: number) {
-    var d = a + b;
-    return d;
+if (a == 5) {
+    printf("one");
+} else (b == 6) {
+    printf("two");
+} else (c == 7) {
+    printf("three");
+} else {
+    printf("four");
 }

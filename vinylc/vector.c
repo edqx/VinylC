@@ -7,6 +7,12 @@ struct vector create_vector() {
     return out;
 }
 
+struct vector* new_vector() {
+    struct vector* vec = (struct vector*)malloc(sizeof(struct vector));
+    *vec = create_vector();
+    return vec;
+}
+
 char vector_assert_not_initialized(struct vector* vSelf) {
     if (vSelf->data == 0) return VECTOR_SUCCESS;
     return VECTOR_FAIL;

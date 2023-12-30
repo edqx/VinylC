@@ -15,7 +15,7 @@ void print_error(const char* pFileContent, struct syntax_error seSyntaxError) {
     switch (seSyntaxError.uErrorCode) {
     case SYNTAX_ERROR_NIL: break;
     case SYNTAX_ERROR_INVALID_UNARY_OPERATOR: SYNTAX_ERROR_PRINT(pFileContent, invalid_unary_operator, syntax_error_invalid_unary_operator_context, seSyntaxError); break;
-    case SYNTAX_ERROR_EXPECTED_OPERATOR:SYNTAX_ERROR_PRINT(pFileContent, expected_operator, syntax_error_expected_operator_context, seSyntaxError); break;
+    case SYNTAX_ERROR_EXPECTED_OPERATOR: SYNTAX_ERROR_PRINT(pFileContent, expected_operator, syntax_error_expected_operator_context, seSyntaxError); break;
     case SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT: SYNTAX_ERROR_PRINT(pFileContent, var_stmt_expected_assignment, syntax_error_var_stmt_expected_assignment_context, seSyntaxError); break;
     case SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND: SYNTAX_ERROR_PRINT(pFileContent, missing_right_hand_operand, syntax_error_missing_right_hand_operand_context, seSyntaxError); break;
     case SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER: SYNTAX_ERROR_PRINT(pFileContent, var_stmt_expected_identifier, syntax_error_var_stmt_expected_identifier_context, seSyntaxError); break;
@@ -26,6 +26,9 @@ void print_error(const char* pFileContent, struct syntax_error seSyntaxError) {
     case SYNTAX_ERROR_MISSING_FUNCTION_DECL: SYNTAX_ERROR_PRINT(pFileContent, missing_function_decl, syntax_error_missing_function_decl_context, seSyntaxError); break;
     case SYNTAX_ERROR_INVALID_FUNCTION_DECL: SYNTAX_ERROR_PRINT(pFileContent, invalid_function_decl, syntax_error_invalid_function_decl_context, seSyntaxError); break;
     case SYNTAX_ERROR_INVALID_FUNCTION_NAME: SYNTAX_ERROR_PRINT(pFileContent, invalid_function_name, syntax_error_invalid_function_name_context, seSyntaxError); break;
+    case SYNTAX_ERROR_MISSING_IF_CONDITION: SYNTAX_ERROR_PRINT(pFileContent, missing_if_condition, syntax_error_missing_if_condition_context, seSyntaxError); break;
+    case SYNTAX_ERROR_MISSING_IF_BODY: SYNTAX_ERROR_PRINT(pFileContent, missing_if_body, syntax_error_missing_if_body_context, seSyntaxError); break;
+    case SYNTAX_ERROR_IF_CONDITION_NOT_PARENTHESIZED: SYNTAX_ERROR_PRINT(pFileContent, if_condition_not_parenthesized, syntax_error_if_condition_not_parenthesized_context, seSyntaxError); break;
     default:
         printf("\x1b[91m[ERROR]: %i <not printed>\x1b[0m\n", seSyntaxError.uErrorCode);
         break;
@@ -145,6 +148,30 @@ SYNTAX_ERROR_PRINT_FUNCTION(invalid_function_name, syntax_error_invalid_function
     } else {
         printf("\x1b[91m[ERROR]: Invalid function name at %i..%i\x1b[0m\n", range->uStartIdx, range->uEndIdx);
         free(range);
+    }
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(missing_if_condition, syntax_error_missing_if_condition_context) {
+    printf("\x1b[91m[ERROR]: Expected body for if statement at %i\x1b[0m\n", pContext->tIfToken->fiirFileRange.uEndIdx);
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(if_condition_not_parenthesized, syntax_error_if_condition_not_parenthesized_context) {
+    struct file_input_idx_range* range = 0;
+    if (pContext->aeIfCondition != 0) recursive_get_ast_range(pContext->aeIfCondition, &range);
+    if (range == 0) {
+        printf("\x1b[91m[ERROR]: Condition must be parenthesized following 'if' at %i\x1b[0m\n", pContext->tIfToken->fiirFileRange.uEndIdx);
+    } else {
+        printf("\x1b[91m[ERROR]: Condition must be parenthesized beginning at %i\x1b[0m\n", range->uStartIdx);
+    }
+}
+
+SYNTAX_ERROR_PRINT_FUNCTION(missing_if_body, syntax_error_missing_if_body_context) {
+    struct file_input_idx_range* range = 0;
+    if (pContext->aeIfCondition != 0) recursive_get_ast_range(pContext->aeIfCondition, &range);
+    if (range == 0) {
+        printf("\x1b[91m[ERROR]: Expected body for if statement at %i\x1b[0m\n", pContext->tIfToken->fiirFileRange.uEndIdx);
+    } else {
+        printf("\x1b[91m[ERROR]: Expected body for if statement following condition at %i\x1b[0m\n", range->uEndIdx);
     }
 }
 
@@ -295,6 +322,7 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
         }
         break;
     case TOKEN_KIND_IDENT:
+        if (strcmp(tToken->pContent, "else") == 0) return AST_PRECEDENCE_STATEMENT_ELSE;
         if (strcmp(tToken->pContent, "return") == 0) return AST_PRECEDENCE_STATEMENT_RETURN;
         return AST_PRECEDENCE_STATEMENT;
     }
@@ -303,10 +331,22 @@ char get_operator_precedence(struct token* tToken, char iOperatorParseMode) {
 
 char get_keyword_operator_parse_mode(const char* pIdentStr) {
     unsigned int len = strlen(pIdentStr);
-    if (len == 3 && strcmp(pIdentStr, "var") == 0) return OPERATOR_PARSE_MODE_VAR_STMT;
-    if (len == 4 && strcmp(pIdentStr, "func") == 0) return OPERATOR_PARSE_MODE_FUNCTION_STMT;
-    if (len == 4 && strcmp(pIdentStr, "type") == 0) return OPERATOR_PARSE_MODE_TYPE_STMT;
-    if (len == 6 && strcmp(pIdentStr, "return") == 0) return OPERATOR_PARSE_MODE_RETURN_STMT;
+    switch (len) {
+        case 2:
+            if (strcmp(pIdentStr, "if") == 0) return OPERATOR_PARSE_MODE_IF_STMT;
+            break;
+        case 3:
+            if (strcmp(pIdentStr, "var") == 0) return OPERATOR_PARSE_MODE_VAR_STMT;
+            break;
+        case 4:
+            if (strcmp(pIdentStr, "func") == 0) return OPERATOR_PARSE_MODE_IF_STMT;
+            if (strcmp(pIdentStr, "type") == 0) return OPERATOR_PARSE_MODE_TYPE_STMT;
+            if (strcmp(pIdentStr, "else") == 0) return OPERATOR_PARSE_MODE_ELSE_STMT;
+            break;
+        case 6:
+            if (strcmp(pIdentStr, "return") == 0) return OPERATOR_PARSE_MODE_RETURN_STMT;
+            break;
+    }
     return OPERATOR_PARSE_MODE_NIL;
 }
 
@@ -322,6 +362,10 @@ AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer) AST_ELEM_GET_FUNCTION_IMPL
 
 AST_ELEM_GET_FUNCTION(call, function_ref) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_CALL, 0);
 AST_ELEM_GET_FUNCTION(call, params) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_CALL, 1);
+
+AST_ELEM_GET_FUNCTION(if, condition) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_IF_STMT, 0);
+AST_ELEM_GET_FUNCTION(if, block) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_IF_STMT, 1);
+AST_ELEM_GET_FUNCTION(if, else_block) AST_ELEM_GET_FUNCTION_IMPL(AST_NODE_KIND_IF_STMT, 2);
 
 char get_matching_close_parenthesis(char cOpenPar) {
     switch (cOpenPar) {
@@ -341,21 +385,53 @@ char get_parenthesis_node_construction_kind(char cOpenPar) {
     return AST_NODE_KIND_EMPTY;
 }
 
-char eval_stack_pop_operator(struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode) {
+struct expression_list_builder create_expression_list_builder() {
+    struct expression_list_builder out = {};
+    return out;
+}
+
+char init_expression_list_builder(struct expression_list_builder* elbSelf, struct vector* vSyntaxErrors, struct vector* vExpressionList) {
+    elbSelf->vSyntaxErrors = vSyntaxErrors;
+    elbSelf->vExpressionList = vExpressionList;
+
+    elbSelf->vOperatorStack = new_vector();
+    char eInit2 = init_vector(elbSelf->vOperatorStack, 512, sizeof(struct operator_pending_pop));
+    if (eInit2 != VECTOR_SUCCESS) return AST_NODE_FAIL;
+    elbSelf->vEvalStack = new_vector();
+    char eInit3 = init_vector(elbSelf->vEvalStack, 512, sizeof(struct ast_elem*));
+    if (eInit3 != VECTOR_SUCCESS) {
+        deinit_vector(elbSelf->vOperatorStack);
+        return AST_NODE_FAIL;
+    }
+    
+    return AST_NODE_SUCCESS;
+}
+
+char deinit_expression_list_builder(struct expression_list_builder* elbSelf) {
+    char eDeInit1 = deinit_vector(elbSelf->vOperatorStack);
+    if (eDeInit1 != VECTOR_SUCCESS) return eDeInit1;
+    free(elbSelf->vOperatorStack);
+    char eDeInit2 = deinit_vector(elbSelf->vEvalStack);
+    if (eDeInit2 != VECTOR_SUCCESS) return eDeInit2;
+    free(elbSelf->vEvalStack);
+    return AST_NODE_SUCCESS;
+}
+
+char eval_stack_pop_operator(struct expression_list_builder* elbBuilder, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
     struct ast_elem* left = 0;
-    if (vEvalStack->uLength == 0) {
+    if (elbBuilder->vEvalStack->uLength == 0) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_missing_right_hand_operand_context);
         context->tToken = tOperatorToken;
-        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND, context);
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_MISSING_RIGHT_HAND_OPERAND, context);
     } else {
         if (!bIsUnarySuff) {
-            char ePopRight = vector_pop(vEvalStack, (void*)&right);
+            char ePopRight = vector_pop(elbBuilder->vEvalStack, (void*)&right);
             if (ePopRight != VECTOR_SUCCESS) return ePopRight;
         }
         
         if (!bIsUnaryPref) {
-            char ePopLeft = vector_pop(vEvalStack, (void*)&left);
+            char ePopLeft = vector_pop(elbBuilder->vEvalStack, (void*)&left);
             if (ePopLeft != VECTOR_SUCCESS) return ePopLeft;
         }
     }
@@ -405,7 +481,7 @@ char eval_stack_pop_operator(struct vector* vOperatorStack, struct vector* vEval
         }
     }
 
-    char eAppend = vector_append(vEvalStack, (void*)&operatorNode);
+    char eAppend = vector_append(elbBuilder->vEvalStack, (void*)&operatorNode);
     if (eAppend != VECTOR_SUCCESS) {
         free(operatorNode);
         free(operatorLiteral);
@@ -415,26 +491,26 @@ char eval_stack_pop_operator(struct vector* vOperatorStack, struct vector* vEval
     if (bIsUnarySuff && !can_operator_be_unary_suff(tOperatorToken)) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_invalid_unary_operator_context);
         context->tToken = tOperatorToken;
-        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_UNARY_OPERATOR, context);
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_INVALID_UNARY_OPERATOR, context);
     }
 
     if (bIsUnaryPref && !can_operator_be_unary_pref(tOperatorToken)) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_invalid_unary_operator_context);
         context->tToken = tOperatorToken;
-        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_UNARY_OPERATOR, context);
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_INVALID_UNARY_OPERATOR, context);
     }
 
-    char eSuffixOperators = give_operator_following_expression(vOperatorStack);
+    char eSuffixOperators = give_operator_following_expression(elbBuilder->vOperatorStack);
     if (eSuffixOperators != AST_NODE_SUCCESS) return eSuffixOperators;
 
     *out_anNode = operatorNode;
     return AST_NODE_SUCCESS;
 }
 
-char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode) {
+char eval_stack_pop_var_stmt(struct expression_list_builder* elbBuilder, struct token* tVarToken, struct ast_node** out_anNode) {
     struct ast_elem* right = 0;
-    if (vEvalStack->uLength != 0) {
-        char ePopRight = vector_shift(vEvalStack, (void*)&right);
+    if (elbBuilder->vEvalStack->uLength != 0) {
+        char ePopRight = vector_shift(elbBuilder->vEvalStack, (void*)&right);
         if (ePopRight != VECTOR_SUCCESS) return ePopRight;
     }
 
@@ -448,7 +524,7 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
         INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_var_stmt_expected_assignment_context);
         context->tVarToken = tVarToken;
         context->aeOperator = right;
-        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT, context);
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_VAR_STMT_EXPECTED_ASSIGNMENT, context);
         if (eGetBinaryOperator != AST_NODE_SUCCESS && eGetBinaryOperator != AST_NODE_WRONG_NODE_KIND) return eGetBinaryOperator;
     }
     
@@ -489,7 +565,7 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
         INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_var_stmt_expected_identifier_context);
         context->tVarToken = tVarToken;
         context->aeLeftHandElem = leftOperand;
-        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER, context);
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_VAR_STMT_EXPECTED_IDENTIFIER, context);
     }
 
     struct ast_elem* rightOperand = 0;
@@ -527,7 +603,7 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
         }
     }
 
-    char eAppend = vector_unshift(vEvalStack, (void*)&varDeclStmtNode);
+    char eAppend = vector_unshift(elbBuilder->vEvalStack, (void*)&varDeclStmtNode);
     if (eAppend != VECTOR_SUCCESS) {
         free(varDeclStmtNode);
         free(varTypeLiteral);
@@ -537,15 +613,15 @@ char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxEr
     return AST_NODE_SUCCESS;
 }
 
-char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tFunctionToken, struct ast_node** out_anNode) {
+char eval_stack_pop_function_decl(struct expression_list_builder* elbBuilder, struct token* tFunctionToken, struct ast_node** out_anNode) {
     struct ast_elem* functionCall = 0;
-    if (vEvalStack->uLength != 0) {
-        char eShift = vector_shift(vEvalStack, &functionCall);
+    if (elbBuilder->vEvalStack->uLength != 0) {
+        char eShift = vector_shift(elbBuilder->vEvalStack, &functionCall);
         if (eShift != VECTOR_SUCCESS) return eShift;
     }
     struct ast_elem* codeBlock = 0;
-    if (vEvalStack->uLength != 0) {
-        char eShift = vector_shift(vEvalStack, &codeBlock);
+    if (elbBuilder->vEvalStack->uLength != 0) {
+        char eShift = vector_shift(elbBuilder->vEvalStack, &codeBlock);
         if (eShift != VECTOR_SUCCESS) return eShift;
     }
 
@@ -559,19 +635,19 @@ char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyn
     if (functionCall == 0) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_missing_function_decl_context);
         errContext->tFunctionToken = tFunctionToken;
-        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_MISSING_FUNCTION_DECL, errContext);
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_MISSING_FUNCTION_DECL, errContext);
     } else if (functionCall->iKind != AST_NODE_KIND_CALL) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_invalid_function_decl_context);
         errContext->tFunctionToken = tFunctionToken;
         errContext->aeFunctionDecl = functionCall;
-        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_FUNCTION_DECL, errContext);
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_INVALID_FUNCTION_DECL, errContext);
     }
     if (functionCall != 0 && (codeBlock == 0 || codeBlock->iKind != AST_NODE_KIND_BLOCK)) {
         INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_missing_function_impl_context);
         errContext->tFunctionToken = tFunctionToken;
         errContext->aeFunctionCall = functionCall;
         errContext->alFunctionName = 0;
-        REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_MISSING_FUNCTION_IMPL, errContext);
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_MISSING_FUNCTION_IMPL, errContext);
     }
     
     struct ast_node* functionDeclNode = 0;
@@ -631,7 +707,7 @@ char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyn
             INSTANCE_SYNTAX_ERROR_CONTEXT(errContext, syntax_error_invalid_function_name_context);
             errContext->tFunctionToken = tFunctionToken;
             errContext->aeFunctionRef = callFunctionRef;
-            REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_INVALID_FUNCTION_NAME, errContext);
+            REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_INVALID_FUNCTION_NAME, errContext);
         }
 
         free(callNode);
@@ -646,7 +722,7 @@ char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyn
         }
     }
 
-    char eAppend = vector_unshift(vEvalStack, (void*)&functionDeclNode);
+    char eAppend = vector_unshift(elbBuilder->vEvalStack, (void*)&functionDeclNode);
     if (eAppend != VECTOR_SUCCESS) {
         free(functionDeclNode);
         free(functionTypeLiteral);
@@ -657,10 +733,10 @@ char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyn
     return AST_NODE_SUCCESS;
 }
 
-char eval_stack_pop_return_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tFunctionToken, struct ast_node** out_anNode) {
+char eval_stack_pop_return_stmt(struct expression_list_builder* elbBuilder, struct token* tReturnToken, struct ast_node** out_anNode) {
     struct ast_elem* returnExpr = 0;
-    if (vEvalStack->uLength != 0) {
-        char ePop = vector_pop(vEvalStack, (void*)&returnExpr);
+    if (elbBuilder->vEvalStack->uLength != 0) {
+        char ePop = vector_pop(elbBuilder->vEvalStack, (void*)&returnExpr);
         if (ePop != VECTOR_SUCCESS) return ePop;
     }
     
@@ -681,7 +757,7 @@ char eval_stack_pop_return_stmt(struct vector* vEvalStack, struct vector* vSynta
         }
     }
 
-    char eAppend = vector_append(vEvalStack, (void*)&returnNode);
+    char eAppend = vector_append(elbBuilder->vEvalStack, (void*)&returnNode);
     if (eAppend != VECTOR_SUCCESS) {
         free(returnNode);
         return eAppend;
@@ -690,10 +766,156 @@ char eval_stack_pop_return_stmt(struct vector* vEvalStack, struct vector* vSynta
     return AST_NODE_SUCCESS;
 }
 
-char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode) {
+char eval_stack_pop_if_stmt(struct expression_list_builder* elbBuilder, struct token* tIfToken, struct ast_node** out_anNode) {struct ast_elem* returnExpr = 0;
+    struct ast_elem* conditionElem = 0;
+    if (elbBuilder->vEvalStack->uLength == 0) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_missing_if_condition_context);
+        context->tIfToken = tIfToken;
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_MISSING_IF_CONDITION, context);
+    } else {
+        char ePop = vector_shift(elbBuilder->vEvalStack, (void*)&conditionElem);
+        if (ePop != VECTOR_SUCCESS) return ePop;
+    }
+
+    struct ast_elem* blockElem = 0;
+    if (elbBuilder->vEvalStack->uLength == 0) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_missing_if_body_context);
+        context->tIfToken = tIfToken;
+        context->aeIfCondition = conditionElem;
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_MISSING_IF_BODY, context);
+    } else {
+        char ePop = vector_shift(elbBuilder->vEvalStack, (void*)&blockElem);
+        if (ePop != VECTOR_SUCCESS) return ePop;
+    }
+
+    if (conditionElem != 0 && conditionElem->iKind != AST_NODE_KIND_PAR) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_if_condition_not_parenthesized_context);
+        context->tIfToken = tIfToken;
+        context->aeIfCondition = conditionElem;
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_IF_CONDITION_NOT_PARENTHESIZED, context);
+    }
+    
+    struct ast_node* ifNode = 0;
+    char eNewNode = new_ast_node(&ifNode);
+    if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+    char eInitNode = init_ast_node(ifNode, AST_NODE_KIND_IF_STMT, 3);
+    if (eInitNode != AST_NODE_SUCCESS) {
+        free(ifNode);
+        return eInitNode;
+    }
+
+    char eReplaceCond = replace_empty_node(ifNode, conditionElem, 0);
+    if (eReplaceCond != AST_NODE_SUCCESS) {
+        free(ifNode);
+        return eInitNode;
+    }
+
+    char eReplaceBody = replace_empty_node(ifNode, blockElem, 1);
+    if (eReplaceBody != AST_NODE_SUCCESS) {
+        free(ifNode);
+        return eInitNode;
+    }
+    
+    char eAppend = vector_append(elbBuilder->vEvalStack, (void*)&ifNode);
+    if (eAppend != VECTOR_SUCCESS) {
+        free(ifNode);
+        return eAppend;
+    }
+    *out_anNode = ifNode;
+    return AST_NODE_SUCCESS;
+}
+
+char eval_stack_pop_else_stmt(struct expression_list_builder* elbBuilder, struct token* tElseToken, struct ast_node** out_anNode) {
+    struct ast_elem* lastIfStatement = 0;
+    char ePopExpr = vector_at(elbBuilder->vExpressionList, elbBuilder->vExpressionList->uLength - 1, (void*)&lastIfStatement);
+    if (ePopExpr != VECTOR_SUCCESS) return ePopExpr;
+
+    if (lastIfStatement == 0) {
+        // todo: error
+    }
+    
+    struct ast_elem* elseSon = 0;
+    char eGetElseBlock = get_if_else_block(lastIfStatement, &elseSon);
+    if (eGetElseBlock != AST_NODE_SUCCESS) return eGetElseBlock;
+    while (elseSon->iKind == AST_NODE_KIND_IF_STMT) {
+        lastIfStatement = elseSon;
+        eGetElseBlock = get_if_else_block(lastIfStatement, &elseSon);
+        if (eGetElseBlock != AST_NODE_SUCCESS) return eGetElseBlock;
+    }
+    if (elseSon->iKind != AST_NODE_KIND_EMPTY) {
+        // todo: error
+    }
+
+    struct ast_elem* conditionElem = 0;
+    struct ast_elem* blockElem = 0;
+    if (elbBuilder->vEvalStack->uLength != 0) {
+        char ePop = vector_shift(elbBuilder->vEvalStack, (void*)&blockElem);
+        if (ePop != VECTOR_SUCCESS) return ePop;
+    }
+    
+    if (elbBuilder->vEvalStack->uLength != 0) {
+        char ePop = vector_shift(elbBuilder->vEvalStack, (void*)&conditionElem);
+        if (ePop != VECTOR_SUCCESS) return ePop;
+    }
+
+    if (conditionElem != 0) {
+        struct ast_elem* tmp = conditionElem;
+        conditionElem = blockElem;
+        blockElem = tmp;
+    }
+
+    if (blockElem == 0) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_missing_if_body_context);
+        context->tIfToken = tElseToken;
+        context->aeIfCondition = conditionElem;
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_MISSING_IF_BODY, context);
+    }
+
+    if (conditionElem != 0 && conditionElem->iKind != AST_NODE_KIND_PAR) {
+        INSTANCE_SYNTAX_ERROR_CONTEXT(context, syntax_error_if_condition_not_parenthesized_context);
+        context->tIfToken = tElseToken;
+        context->aeIfCondition = conditionElem;
+        REGISTER_SYNTAX_ERROR(elbBuilder->vSyntaxErrors, error, SYNTAX_ERROR_IF_CONDITION_NOT_PARENTHESIZED, context);
+    }
+    
+    if (conditionElem != 0) {
+        struct ast_node* elseIfNode = 0;
+        char eNewNode = new_ast_node(&elseIfNode);
+        if (eNewNode != AST_NODE_SUCCESS) return eNewNode;
+        char eInitNode = init_ast_node(elseIfNode, AST_NODE_KIND_IF_STMT, 3);
+        if (eInitNode != AST_NODE_SUCCESS) {
+            free(elseIfNode);
+            return eInitNode;
+        }
+
+        char eReplaceCond = replace_empty_node(elseIfNode, conditionElem, 0);
+        if (eReplaceCond != AST_NODE_SUCCESS) {
+            free(elseIfNode);
+            return eInitNode;
+        }
+
+        char eReplaceBody = replace_empty_node(elseIfNode, blockElem, 1);
+        if (eReplaceBody != AST_NODE_SUCCESS) {
+            free(elseIfNode);
+            return eInitNode;
+        }
+
+        char eReplaceLastIf = replace_empty_node((struct ast_node*)lastIfStatement, (struct ast_elem*)elseIfNode, 2);
+        if (eReplaceLastIf != AST_NODE_SUCCESS) {
+            free(elseIfNode);
+            return eReplaceLastIf;
+        }
+    } else if (blockElem) {
+        char eReplaceLastIf = replace_empty_node((struct ast_node*)lastIfStatement, (struct ast_elem*)blockElem, 2);
+        if (eReplaceLastIf != AST_NODE_SUCCESS) return eReplaceLastIf;
+    }
+    return AST_NODE_SUCCESS;
+}
+
+char eval_stack_pop_call(struct expression_list_builder* elbBuilder, struct ast_node* anParNode, struct ast_node** out_anNode) {
     struct ast_elem* functionRef = 0;
-    if (vEvalStack->uLength == 0) return AST_NODE_UNDEFINED_FUNCTION_CALL; // this should never happen
-    char ePop = vector_pop(vEvalStack, (void*)&functionRef);
+    if (elbBuilder->vEvalStack->uLength == 0) return AST_NODE_UNDEFINED_FUNCTION_CALL; // this should never happen
+    char ePop = vector_pop(elbBuilder->vEvalStack, (void*)&functionRef);
     if (ePop != VECTOR_SUCCESS) return ePop;
     
     struct ast_node* callNode = 0;
@@ -717,7 +939,7 @@ char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors
         return eReplaceParams;
     }
 
-    char eAppend = vector_append(vEvalStack, (void*)&callNode);
+    char eAppend = vector_append(elbBuilder->vEvalStack, (void*)&callNode);
     if (eAppend != VECTOR_SUCCESS) {
         free(callNode);
         return eAppend;
@@ -726,16 +948,16 @@ char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors
     return AST_NODE_SUCCESS;
 }
 
-char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors) {
-    while (vOperatorStack->uLength > 0) { // shunting-yard, we'll pop until this token precedence is greater
+char pop_greater_precedence(struct expression_list_builder* elbBuilder, char iPrecedence) {
+    while (elbBuilder->vOperatorStack->uLength > 0) { // shunting-yard, we'll pop until this token precedence is greater
         struct operator_pending_pop lastOperatorPending;
-        char eLastOp = vector_at(vOperatorStack, vOperatorStack->uLength - 1, (void*)&lastOperatorPending);
+        char eLastOp = vector_at(elbBuilder->vOperatorStack, elbBuilder->vOperatorStack->uLength - 1, (void*)&lastOperatorPending);
         if (eLastOp != VECTOR_SUCCESS) return AST_NODE_FAIL;
 
         char p = get_operator_precedence(lastOperatorPending.tToken, lastOperatorPending.iOperatorParseMode);
         if (iPrecedence > p) break;
 
-        char ePop = vector_pop(vOperatorStack, 0);
+        char ePop = vector_pop(elbBuilder->vOperatorStack, 0);
         if (ePop != VECTOR_SUCCESS) return ePop;
 
         struct ast_node* operatorNode;
@@ -747,18 +969,24 @@ char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, str
         case OPERATOR_PARSE_MODE_STANDALONE:
             char isUnaryPref = lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY_PREF || lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE;
             char isUnarySuff = lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_UNARY_SUFF | lastOperatorPending.iOperatorParseMode == OPERATOR_PARSE_MODE_STANDALONE;
-            eStackPop = eval_stack_pop_operator(vOperatorStack, vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, isUnaryPref, isUnarySuff, &operatorNode);
+            eStackPop = eval_stack_pop_operator(elbBuilder, lastOperatorPending.tToken, isUnaryPref, isUnarySuff, &operatorNode);
             break;
         case OPERATOR_PARSE_MODE_VAR_STMT:
-            eStackPop = eval_stack_pop_var_stmt(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
+            eStackPop = eval_stack_pop_var_stmt(elbBuilder, lastOperatorPending.tToken, &operatorNode);
             break;
         case OPERATOR_PARSE_MODE_FUNCTION_STMT:
-            eStackPop = eval_stack_pop_function_decl(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
+            eStackPop = eval_stack_pop_function_decl(elbBuilder, lastOperatorPending.tToken, &operatorNode);
             break;
         case OPERATOR_PARSE_MODE_TYPE_STMT:
             break;
         case OPERATOR_PARSE_MODE_RETURN_STMT:
-            eStackPop = eval_stack_pop_return_stmt(vEvalStack, vSyntaxErrors, lastOperatorPending.tToken, &operatorNode);
+            eStackPop = eval_stack_pop_return_stmt(elbBuilder, lastOperatorPending.tToken, &operatorNode);
+            break;
+        case OPERATOR_PARSE_MODE_IF_STMT:
+            eStackPop = eval_stack_pop_if_stmt(elbBuilder, lastOperatorPending.tToken, &operatorNode);
+            break;
+        case OPERATOR_PARSE_MODE_ELSE_STMT:
+            eStackPop = eval_stack_pop_else_stmt(elbBuilder, lastOperatorPending.tToken, &operatorNode);
             break;
         }
         if (eStackPop != AST_NODE_SUCCESS) return eStackPop;
@@ -791,73 +1019,75 @@ CONTINUE_AST_PREDICATE_FUNCTION(is_close_parenthesis) {
     return AST_NODE_STOP;
 }
 
-char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, char iPrecedence) {
-    if (vOperatorStack->uLength > 0) {
-        char ePop = pop_greater_precedence(iPrecedence, vOperatorStack, vEvalStack, vSyntaxErrors);
+char flush_to_expression_list(struct expression_list_builder* elbBuilder, char iPrecedence) {
+    if (elbBuilder->vOperatorStack->uLength > 0) {
+        char ePop = pop_greater_precedence(elbBuilder, iPrecedence);
         if (ePop != AST_NODE_SUCCESS) return ePop;
     }
     
-    if (vEvalStack->uLength > 0) {
-        char eConcat = vector_append_concat(vExpressionList, vEvalStack);
+    if (elbBuilder->vEvalStack->uLength > 0) {
+        char eConcat = vector_append_concat(elbBuilder->vExpressionList, elbBuilder->vEvalStack);
         if (eConcat != VECTOR_SUCCESS) return eConcat;
-        char eClear1 = vector_clear(vEvalStack);
+        char eClear1 = vector_clear(elbBuilder->vEvalStack);
         if (eClear1 != VECTOR_SUCCESS) return eClear1;
     }
     return AST_NODE_SUCCESS;
 }
 
-char build_expression_list_separator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken) {
-    char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors, 0);
+char build_expression_list_separator(struct expression_list_builder* elbBuilder, struct token* tToken) {
+    char eFlush = flush_to_expression_list(elbBuilder, 0);
     if (eFlush != AST_NODE_SUCCESS) return eFlush;
     return AST_NODE_SUCCESS;
 }
 
-char build_expression_list_keyw(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char iParseMode, char iPrecedece) {
-    char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors, iPrecedece);
+char build_expression_list_keyw(struct expression_list_builder* elbBuilder, struct token* tToken, char iParseMode, char iPrecedece) {
+    char eFlush = flush_to_expression_list(elbBuilder, iPrecedece);
     if (eFlush != AST_NODE_SUCCESS) return eFlush;
     
     struct operator_pending_pop operatorPending;
     operatorPending.tToken = tToken;
     operatorPending.iOperatorParseMode = iParseMode;
-    char eAddOp = vector_append(vOperatorStack, (void*)&operatorPending);
+    char eAddOp = vector_append(elbBuilder->vOperatorStack, (void*)&operatorPending);
     if (eAddOp != VECTOR_SUCCESS) return eAddOp;
     return AST_NODE_SUCCESS;
 }
 
-char build_expression_list_literal(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken) {
+char build_expression_list_literal(struct expression_list_builder* elbBuilder, struct token* tToken) {
     struct ast_literal* literal = 0;
     char eAllocAst = allocate_ast_literal_from_token(tToken, &literal);
     if (eAllocAst != AST_NODE_SUCCESS) return eAllocAst;
 
-    char eAddLit = vector_append(vEvalStack, (void*)&literal);
+    char eAddLit = vector_append(elbBuilder->vEvalStack, (void*)&literal);
     if (eAddLit != VECTOR_SUCCESS) return eAddLit;
     return AST_NODE_SUCCESS;
 }
 
-char build_expression_list_operator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char bIsUnaryPref) {
-    if (vOperatorStack->uLength > 0) {
+char build_expression_list_operator(struct expression_list_builder* elbBuilder, struct token* tToken, char bIsUnaryPref) {
+    if (elbBuilder->vOperatorStack->uLength > 0) {
         char p = get_operator_precedence(tToken, bIsUnaryPref ? OPERATOR_PARSE_MODE_UNARY_PREF : OPERATOR_PARSE_MODE_BINARY);
-        char ePop = pop_greater_precedence(p, vOperatorStack, vEvalStack, vSyntaxErrors);
+        char ePop = pop_greater_precedence(elbBuilder, p);
         if (ePop != AST_NODE_SUCCESS) return ePop;
     }
 
     struct operator_pending_pop operatorPending;
     operatorPending.tToken = tToken;
     operatorPending.iOperatorParseMode = bIsUnaryPref ? OPERATOR_PARSE_MODE_STANDALONE : OPERATOR_PARSE_MODE_UNARY_SUFF;
-    char eAddOp = vector_append(vOperatorStack, (void*)&operatorPending);
+    char eAddOp = vector_append(elbBuilder->vOperatorStack, (void*)&operatorPending);
     if (eAddOp != VECTOR_SUCCESS) return eAddOp;
     return AST_NODE_SUCCESS;
 }
 
-char build_expression_list_par(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, struct token*** pptToken, char bSucceedsEval, char* out_bIsExpression) {
+char build_expression_list_par(struct expression_list_builder* elbBuilder, struct token* tToken, struct token*** pptToken, char bSucceedsEval, char* out_bIsExpression) {
     struct vector expressionList = create_vector();
+    char eInit = init_vector(&expressionList, 512, sizeof(struct ast_elem*));
+    if (eInit != VECTOR_SUCCESS) return AST_NODE_FAIL;
     char closingPar = get_matching_close_parenthesis(tToken->pContent[0]);
     if (closingPar == '\0') return AST_NODE_INVALID_PARENTHESIS;
     (*pptToken)++;
     struct close_parenthesis_context closeParenthesisContext;
     closeParenthesisContext.cExpectedCloseParenthesis = closingPar;
     closeParenthesisContext.tOpenParenthesis = tToken;
-    char eRecurseBuildExpressions = build_expression_list(pptToken, vSyntaxErrors, is_close_parenthesis, &closeParenthesisContext, &expressionList);
+    char eRecurseBuildExpressions = build_expression_list(pptToken, elbBuilder->vSyntaxErrors, is_close_parenthesis, &closeParenthesisContext, &expressionList);
     if (eRecurseBuildExpressions != AST_NODE_SUCCESS) return eRecurseBuildExpressions;
     struct ast_node* parNode;
     char eNewNode = new_ast_node(&parNode);
@@ -883,28 +1113,28 @@ char build_expression_list_par(struct vector* vExpressionList, struct vector* vO
     case AST_NODE_KIND_PAR:
         if (bSucceedsEval) {
             struct ast_node* callNode;
-            char ePopCall = eval_stack_pop_call(vEvalStack, vSyntaxErrors, parNode, &callNode);
+            char ePopCall = eval_stack_pop_call(elbBuilder, parNode, &callNode);
             if (ePopCall != AST_NODE_SUCCESS) {
-                deinit_vector(vOperatorStack);
-                deinit_vector(vEvalStack);
+                deinit_vector(elbBuilder->vOperatorStack);
+                deinit_vector(elbBuilder->vEvalStack);
                 return ePopCall;
             }
         } else {
-            char eAddPar = vector_append(vEvalStack, (void*)&parNode);
+            char eAddPar = vector_append(elbBuilder->vEvalStack, (void*)&parNode);
             if (eAddPar != VECTOR_SUCCESS) return eAddPar;
         }
         *out_bIsExpression = 1;
         break;
     case AST_NODE_KIND_TUPLE:
         *out_bIsExpression = 1;
-        char eAddTuple = vector_append(vEvalStack, (void*)&parNode);
+        char eAddTuple = vector_append(elbBuilder->vEvalStack, (void*)&parNode);
         if (eAddTuple != VECTOR_SUCCESS) return eAddTuple;
         break;
     case AST_NODE_KIND_BLOCK:
         *out_bIsExpression = 0;
-        char eAddBlock = vector_append(vEvalStack, (void*)&parNode);
+        char eAddBlock = vector_append(elbBuilder->vEvalStack, (void*)&parNode);
         if (eAddBlock != VECTOR_SUCCESS) return eAddBlock;
-        char eFlush = flush_to_expression_list(vExpressionList, vOperatorStack, vEvalStack, vSyntaxErrors, AST_PRECEDENCE_STATEMENT);
+        char eFlush = flush_to_expression_list(elbBuilder, AST_PRECEDENCE_STATEMENT);
         if (eFlush != AST_NODE_SUCCESS) return eFlush;
         break;
     }
@@ -931,27 +1161,17 @@ char give_operator_following_expression(struct vector* vOperatorStack) {
 }
 
 char build_expression_list(struct token*** pptToken, struct vector* vSyntaxErrors, CONTINUE_AST_PREDICATE_FUNCTION((*fpContinuePredicate)), void* pCtx, struct vector* out_vExpressionList) {
-    char eInit = init_vector(out_vExpressionList, 512, sizeof(struct ast_elem*));
-    if (eInit != VECTOR_SUCCESS) return AST_NODE_FAIL;
-    struct vector operatorStack = create_vector();
-    char eInit2 = init_vector(&operatorStack, 512, sizeof(struct operator_pending_pop));
-    if (eInit2 != VECTOR_SUCCESS) return AST_NODE_FAIL;
-    struct vector evalStack = create_vector();
-    char eInit3 = init_vector(&evalStack, 512, sizeof(struct ast_elem*));
-    if (eInit3 != VECTOR_SUCCESS) {
-        deinit_vector(&operatorStack);
-        return AST_NODE_FAIL;
-    }
-
+    struct expression_list_builder elbBuilder = create_expression_list_builder();
+    char eInit = init_expression_list_builder(&elbBuilder, vSyntaxErrors, out_vExpressionList);
+    if (eInit != AST_NODE_SUCCESS) return eInit;
     char lastTransformedTokenValidOperand = 0;
     char eContinuePredicate = 0;
     for (; (eContinuePredicate = fpContinuePredicate(**pptToken, vSyntaxErrors, pCtx)) == AST_NODE_SUCCESS; (*pptToken)++) {
         struct token* token = **pptToken;
         if (token->iKind == TOKEN_KIND_SEPARATOR) {
-            char eBuildSep = build_expression_list_separator(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token);
+            char eBuildSep = build_expression_list_separator(&elbBuilder, token);
             if (eBuildSep != AST_NODE_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
+                deinit_expression_list_builder(&elbBuilder);
                 return eBuildSep;
             }
             lastTransformedTokenValidOperand = 0;
@@ -961,10 +1181,9 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
             char parseMode = get_keyword_operator_parse_mode(token->pContent);
             if (parseMode != OPERATOR_PARSE_MODE_NIL) {
                 char precedence = get_operator_precedence(token, parseMode);
-                char eBuildKeyw = build_expression_list_keyw(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, parseMode, precedence);
+                char eBuildKeyw = build_expression_list_keyw(&elbBuilder, token, parseMode, precedence);
                 if (eBuildKeyw != AST_NODE_SUCCESS) {
-                    deinit_vector(&operatorStack);
-                    deinit_vector(&evalStack);
+                    deinit_expression_list_builder(&elbBuilder);
                     return eBuildKeyw;
                 }
                 lastTransformedTokenValidOperand = 0;
@@ -980,43 +1199,38 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
                 context->tToken = token;
                 REGISTER_SYNTAX_ERROR(vSyntaxErrors, error, SYNTAX_ERROR_EXPECTED_OPERATOR, context);
             }
-            char eBuildLiteral = build_expression_list_literal(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token);
+            char eBuildLiteral = build_expression_list_literal(&elbBuilder, token);
             if (eBuildLiteral != AST_NODE_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
+                deinit_expression_list_builder(&elbBuilder);
                 return eBuildLiteral;
             }
             lastTransformedTokenValidOperand = 1;
-            char eSuffixOperators = give_operator_following_expression(&operatorStack);
+            char eSuffixOperators = give_operator_following_expression(elbBuilder.vOperatorStack);
             if (eSuffixOperators != AST_NODE_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
+                deinit_expression_list_builder(&elbBuilder);
                 return eBuildLiteral;
             }
             break;
         case TOKEN_KIND_OPERATOR:
-            char eBuildOper = build_expression_list_operator(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, !lastTransformedTokenValidOperand);
+            char eBuildOper = build_expression_list_operator(&elbBuilder, token, !lastTransformedTokenValidOperand);
             if (eBuildOper != AST_NODE_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
+                deinit_expression_list_builder(&elbBuilder);
                 return eBuildOper;
             }
             lastTransformedTokenValidOperand = 0;
             break;
         case TOKEN_KIND_PAR_OPEN:
             char isExpression = 0;
-            char eBuildPar = build_expression_list_par(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, token, pptToken, lastTransformedTokenValidOperand, &isExpression);
+            char eBuildPar = build_expression_list_par(&elbBuilder, token, pptToken, lastTransformedTokenValidOperand, &isExpression);
             if (eBuildPar != AST_NODE_SUCCESS) {
-                deinit_vector(&operatorStack);
-                deinit_vector(&evalStack);
+                deinit_expression_list_builder(&elbBuilder);
                 return eBuildPar;
             }
             lastTransformedTokenValidOperand = isExpression;
             if (isExpression) {
-                char eSuffixOperators = give_operator_following_expression(&operatorStack);
+                char eSuffixOperators = give_operator_following_expression(elbBuilder.vOperatorStack);
                 if (eSuffixOperators != AST_NODE_SUCCESS) {
-                    deinit_vector(&operatorStack);
-                    deinit_vector(&evalStack);
+                    deinit_expression_list_builder(&elbBuilder);
                     return eBuildLiteral;
                 }
             }
@@ -1030,21 +1244,21 @@ char build_expression_list(struct token*** pptToken, struct vector* vSyntaxError
     }
 
     if (eContinuePredicate != AST_NODE_STOP) {
-        deinit_vector(&operatorStack);
-        deinit_vector(&evalStack);
+        deinit_expression_list_builder(&elbBuilder);
         return eContinuePredicate;
     }
 
-    char eFlush = flush_to_expression_list(out_vExpressionList, &operatorStack, &evalStack, vSyntaxErrors, 0);
+    char eFlush = flush_to_expression_list(&elbBuilder, 0);
     if (eFlush != AST_NODE_SUCCESS) return eFlush;
 
-    deinit_vector(&operatorStack);
-    deinit_vector(&evalStack);
+    deinit_expression_list_builder(&elbBuilder);
     return AST_NODE_SUCCESS;
 }
 
 char build_stmt_list_node(struct token** ptToken, struct vector* vSyntaxErrors, struct ast_node** out_anStmtListNode) {
     struct vector expressionList = create_vector();
+    char eInit = init_vector(&expressionList, 512, sizeof(struct ast_elem*));
+    if (eInit != VECTOR_SUCCESS) return AST_NODE_FAIL;
     char eBuildExpressionList = build_expression_list(&ptToken, vSyntaxErrors, is_eof_token, 0, &expressionList);
     if (eBuildExpressionList != AST_NODE_SUCCESS) return eBuildExpressionList;
 

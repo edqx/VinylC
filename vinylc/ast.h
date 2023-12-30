@@ -28,7 +28,9 @@
 #define AST_NODE_KIND_TUPLE (char)8
 #define AST_NODE_KIND_CALL (char)9
 #define AST_NODE_KIND_FUNCTION_DECL_STMT (char)10
-#define AST_NODE_KIND_RETURN_STMT (char)10
+#define AST_NODE_KIND_RETURN_STMT (char)11
+#define AST_NODE_KIND_IF_STMT (char)12
+#define AST_NODE_KIND_ELSE_STMT (char)13
 
 #define AST_LITERAL_KIND_NIL (char)0
 #define AST_LITERAL_KIND_STR (char)1
@@ -54,6 +56,9 @@ struct syntax_error {
 #define SYNTAX_ERROR_MISSING_FUNCTION_DECL (short)10
 #define SYNTAX_ERROR_INVALID_FUNCTION_DECL (short)11
 #define SYNTAX_ERROR_INVALID_FUNCTION_NAME (short)12
+#define SYNTAX_ERROR_MISSING_IF_CONDITION (short)13
+#define SYNTAX_ERROR_IF_CONDITION_NOT_PARENTHESIZED (short)14
+#define SYNTAX_ERROR_MISSING_IF_BODY (short)15
 
 struct syntax_error_invalid_unary_operator_context { struct token* tToken; };
 struct syntax_error_expected_operator_context { struct token* tToken; };
@@ -66,7 +71,10 @@ struct syntax_error_unmatched_open_parenthesis_context { struct token* tOpenPare
 struct syntax_error_missing_function_impl_context { struct token* tFunctionToken; struct ast_elem* aeFunctionCall; struct ast_literal* alFunctionName; };
 struct syntax_error_missing_function_decl_context { struct token* tFunctionToken; };
 struct syntax_error_invalid_function_decl_context { struct token* tFunctionToken; struct ast_elem* aeFunctionDecl; };
-struct syntax_error_invalid_function_name_context { struct token* tFunctionToken;  struct ast_elem* aeFunctionRef; };
+struct syntax_error_invalid_function_name_context { struct token* tFunctionToken; struct ast_elem* aeFunctionRef; };
+struct syntax_error_missing_if_condition_context { struct token* tIfToken; };
+struct syntax_error_if_condition_not_parenthesized_context { struct token* tIfToken; struct ast_elem* aeIfCondition; };
+struct syntax_error_missing_if_body_context { struct token* tIfToken; struct ast_elem* aeIfCondition; };
 
 #define INSTANCE_SYNTAX_ERROR_CONTEXT(VARNAME, CONTEXT_STRUCT) struct CONTEXT_STRUCT* VARNAME = (struct CONTEXT_STRUCT*)malloc(sizeof(struct CONTEXT_STRUCT))
 #define REGISTER_SYNTAX_ERROR(SYNTAX_ERRORS_STORE, VARNAME, ERROR_CODE, CONTEXT_VARNAME) struct syntax_error VARNAME = create_error(ERROR_CODE, CONTEXT_VARNAME);\
@@ -106,6 +114,9 @@ SYNTAX_ERROR_PRINT_FUNCTION(missing_function_impl, syntax_error_missing_function
 SYNTAX_ERROR_PRINT_FUNCTION(missing_function_decl, syntax_error_missing_function_decl_context);
 SYNTAX_ERROR_PRINT_FUNCTION(invalid_function_decl, syntax_error_invalid_function_decl_context);
 SYNTAX_ERROR_PRINT_FUNCTION(invalid_function_name, syntax_error_invalid_function_name_context);
+SYNTAX_ERROR_PRINT_FUNCTION(missing_if_condition, syntax_error_missing_if_condition_context);
+SYNTAX_ERROR_PRINT_FUNCTION(if_condition_not_parenthesized, syntax_error_if_condition_not_parenthesized_context);
+SYNTAX_ERROR_PRINT_FUNCTION(missing_if_body, syntax_error_missing_if_body_context);
 
 struct ast_node create_ast_node();
 char new_ast_node(struct ast_node** out_anNode);
@@ -132,21 +143,24 @@ char can_operator_be_unary_suff(struct token* tToken);
 #define OPERATOR_PARSE_MODE_FUNCTION_STMT (char)6
 #define OPERATOR_PARSE_MODE_TYPE_STMT (char)7
 #define OPERATOR_PARSE_MODE_RETURN_STMT (char)8
+#define OPERATOR_PARSE_MODE_IF_STMT (char)9
+#define OPERATOR_PARSE_MODE_ELSE_STMT (char)10
 
 #define AST_PRECEDENCE_NIL (char)0
 #define AST_PRECEDENCE_STATEMENT_RETURN (char)1
 #define AST_PRECEDENCE_STATEMENT (char)2
-#define AST_PRECEDENCE_OPERATOR_ASSIGN (char)3
-#define AST_PRECEDENCE_OPERATOR_LOGIC_OR (char)4
-#define AST_PRECEDENCE_OPERATOR_LOGIC_AND (char)5
-#define AST_PRECEDENCE_OPERATOR_EQUAL (char)6
-#define AST_PRECEDENCE_OPERATOR_COMPARE (char)7
-#define AST_PRECEDENCE_OPERATOR_CONCAT (char)8
-#define AST_PRECEDENCE_OPERATOR_ADD (char)9
-#define AST_PRECEDENCE_OPERATOR_MUL (char)10
-#define AST_PRECEDENCE_OPERATOR_UNARY_SUFF (char)11
-#define AST_PRECEDENCE_OPERATOR_UNARY_PREF (char)12
-#define AST_PRECEDENCE_OPERATOR_ACCESS (char)13
+#define AST_PRECEDENCE_STATEMENT_ELSE (char)3
+#define AST_PRECEDENCE_OPERATOR_ASSIGN (char)4
+#define AST_PRECEDENCE_OPERATOR_LOGIC_OR (char)5
+#define AST_PRECEDENCE_OPERATOR_LOGIC_AND (char)6
+#define AST_PRECEDENCE_OPERATOR_EQUAL (char)7
+#define AST_PRECEDENCE_OPERATOR_COMPARE (char)8
+#define AST_PRECEDENCE_OPERATOR_CONCAT (char)9
+#define AST_PRECEDENCE_OPERATOR_ADD (char)10
+#define AST_PRECEDENCE_OPERATOR_MUL (char)11
+#define AST_PRECEDENCE_OPERATOR_UNARY_SUFF (char)12
+#define AST_PRECEDENCE_OPERATOR_UNARY_PREF (char)13
+#define AST_PRECEDENCE_OPERATOR_ACCESS (char)14
 
 char get_operator_precedence(struct token* tToken, char iOperatorParseMode);
 char get_keyword_operator_parse_mode(const char* pIdentStr);
@@ -180,6 +194,10 @@ AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer);
 AST_ELEM_GET_FUNCTION(call, function_ref);
 AST_ELEM_GET_FUNCTION(call, params);
 
+AST_ELEM_GET_FUNCTION(if, condition);
+AST_ELEM_GET_FUNCTION(if, block);
+AST_ELEM_GET_FUNCTION(if, else_block);
+
 char get_matching_close_parenthesis(char cOpenPar);
 char get_parenthesis_node_construction_kind(char cOpenPar);
 
@@ -188,12 +206,25 @@ struct operator_pending_pop {
     char iOperatorParseMode;
 };
 
-char eval_stack_pop_operator(struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode);
-char eval_stack_pop_var_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tVarToken, struct ast_node** out_anNode);
-char eval_stack_pop_function_decl(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tFunctionToken, struct ast_node** out_anNode);
-char eval_stack_pop_return_stmt(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tFunctionToken, struct ast_node** out_anNode);
-char eval_stack_pop_call(struct vector* vEvalStack, struct vector* vSyntaxErrors, struct ast_node* anParNode, struct ast_node** out_anNode);
-char pop_greater_precedence(char iPrecedence, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors);
+struct expression_list_builder {
+    struct vector* vOperatorStack;
+    struct vector* vEvalStack;
+    struct vector* vExpressionList;
+    struct vector* vSyntaxErrors;
+};
+
+struct expression_list_builder create_expression_list_builder();
+char init_expression_list_builder(struct expression_list_builder* elbSelf, struct vector* vSyntaxErrors, struct vector* vExpressionList);
+char deinit_expression_list_builder(struct expression_list_builder* elbSelf);
+
+char eval_stack_pop_operator(struct expression_list_builder* elbBuilder, struct token* tOperatorToken, char bIsUnaryPref, char bIsUnarySuff, struct ast_node** out_anNode);
+char eval_stack_pop_var_stmt(struct expression_list_builder* elbBuilder, struct token* tVarToken, struct ast_node** out_anNode);
+char eval_stack_pop_function_decl(struct expression_list_builder* elbBuilder, struct token* tFunctionToken, struct ast_node** out_anNode);
+char eval_stack_pop_return_stmt(struct expression_list_builder* elbBuilder, struct token* tReturnToken, struct ast_node** out_anNode);
+char eval_stack_pop_if_stmt(struct expression_list_builder* elbBuilder, struct token* tIfToken, struct ast_node** out_anNode);
+char eval_stack_pop_else_stmt(struct expression_list_builder* elbBuilder, struct token* tElseToken, struct ast_node** out_anNode);
+char eval_stack_pop_call(struct expression_list_builder* elbBuilder, struct ast_node* anParNode, struct ast_node** out_anNode);
+char pop_greater_precedence(struct expression_list_builder* elbBuilder, char iPrecedence);
 
 #define CONTINUE_AST_PREDICATE_FUNCTION(NAME) char NAME(struct token* pToken, struct vector* vSyntaxErrors, void* pCtx)
 
@@ -205,12 +236,12 @@ struct close_parenthesis_context {
     char cExpectedCloseParenthesis;
 };
 
-char flush_to_expression_list(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, char iPrecedence);
-char build_expression_list_separator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken);
-char build_expression_list_keyw(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char iParseMode, char iPrecedence);
-char build_expression_list_literal(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken);
-char build_expression_list_operator(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, char bIsUnaryPref);
-char build_expression_list_par(struct vector* vExpressionList, struct vector* vOperatorStack, struct vector* vEvalStack, struct vector* vSyntaxErrors, struct token* tToken, struct token*** pptToken, char bSucceedsEval, char* out_bIsExpression);
+char flush_to_expression_list(struct expression_list_builder* elbBuilder, char iPrecedence);
+char build_expression_list_separator(struct expression_list_builder* elbBuilder, struct token* tToken);
+char build_expression_list_keyw(struct expression_list_builder* elbBuilder, struct token* tToken, char iParseMode, char iPrecedence);
+char build_expression_list_literal(struct expression_list_builder* elbBuilder, struct token* tToken);
+char build_expression_list_operator(struct expression_list_builder* elbBuilder, struct token* tToken, char bIsUnaryPref);
+char build_expression_list_par(struct expression_list_builder* elbBuilder, struct token* tToken, struct token*** pptToken, char bSucceedsEval, char* out_bIsExpression);
 char give_operator_following_expression(struct vector* vOperatorStack);
 char build_expression_list(struct token*** pptToken, struct vector* vSyntaxErrors, CONTINUE_AST_PREDICATE_FUNCTION((*fpContinuePredicate)), void *pCtx, struct vector* out_vExpressionList);
 char build_stmt_list_node(struct token** ptToken, struct vector* vSyntaxErrors, struct ast_node** out_anStmtListNode);
