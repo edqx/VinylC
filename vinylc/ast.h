@@ -89,8 +89,8 @@ struct ast_elem {
 
 struct ast_node {
     char iKind;
-    unsigned int uNumSons;
-    struct ast_elem** ppSons;
+    unsigned int uNumElements;
+    struct ast_elem** ppElements;
 };
 
 struct ast_literal {
@@ -121,8 +121,8 @@ SYNTAX_ERROR_PRINT_FUNCTION(missing_if_body, syntax_error_missing_if_body_contex
 struct ast_node create_ast_node();
 char new_ast_node(struct ast_node** out_anNode);
 char assert_ast_node_not_initialized(struct ast_node* anSelf);
-char init_ast_node(struct ast_node* anSelf, char uKind, unsigned int uNumSons);
-char replace_empty_node(struct ast_node* anSelf, struct ast_elem* anReplacement, unsigned int uSonIdx);
+char init_ast_node(struct ast_node* anSelf, char uKind, unsigned int uNumElements);
+char replace_empty_node(struct ast_node* anSelf, struct ast_elem* anReplacement, unsigned int uElementIdx);
 
 struct ast_literal create_ast_literal();
 char new_ast_literal(struct ast_literal** out_alLiteral);
@@ -165,19 +165,19 @@ char can_operator_be_unary_suff(struct token* tToken);
 char get_operator_precedence(struct token* tToken, char iOperatorParseMode);
 char get_keyword_operator_parse_mode(const char* pIdentStr);
 
-#define AST_ELEM_GET_FUNCTION(NODE_KIND_NAME, SON_NAME) char get_##NODE_KIND_NAME##_##SON_NAME(struct ast_elem* aeElem, struct ast_elem** out_aeElem)
-#define AST_ELEM_GET_FUNCTION_IMPL(NODE_KIND, SON_IDX) {\
+#define AST_ELEM_GET_FUNCTION(NODE_KIND_NAME, ELEMENT_NAME) char get_##NODE_KIND_NAME##_##ELEMENT_NAME(struct ast_elem* aeElem, struct ast_elem** out_aeElem)
+#define AST_ELEM_GET_FUNCTION_IMPL(NODE_KIND, ELEMENT_IDX) {\
     if (aeElem->iKind != NODE_KIND) return AST_NODE_WRONG_NODE_KIND;\
     if (assert_ast_node_not_initialized((struct ast_node*)aeElem) == AST_NODE_SUCCESS) return AST_NODE_NOT_INITIALIZED;\
-    *out_aeElem = ((struct ast_node*)aeElem)->ppSons[SON_IDX];\
+    *out_aeElem = ((struct ast_node*)aeElem)->ppElements[ELEMENT_IDX];\
     return AST_NODE_SUCCESS;\
 } 
 
-#define AST_ELEM_GET_LITERAL_FUNCTION(NODE_KIND_NAME, SON_NAME) char get_##NODE_KIND_NAME##_##SON_NAME(struct ast_elem* aeElem, const char** out_alLiteral)
-#define AST_ELEM_GET_LITERAL_FUNCTION_IMPL(NODE_KIND, SON_IDX) {\
+#define AST_ELEM_GET_LITERAL_FUNCTION(NODE_KIND_NAME, ELEMENT_NAME) char get_##NODE_KIND_NAME##_##ELEMENT_NAME(struct ast_elem* aeElem, const char** out_alLiteral)
+#define AST_ELEM_GET_LITERAL_FUNCTION_IMPL(NODE_KIND, ELEMENT_IDX) {\
     if (aeElem->iKind != NODE_KIND) return AST_NODE_WRONG_NODE_KIND;\
     if (assert_ast_node_not_initialized((struct ast_node*)aeElem) == AST_NODE_SUCCESS) return AST_NODE_NOT_INITIALIZED;\
-    *out_alLiteral = ((struct ast_literal*)(((struct ast_node*)aeElem)->ppSons[SON_IDX]))->tToken->pContent;\
+    *out_alLiteral = ((struct ast_literal*)(((struct ast_node*)aeElem)->ppElements[ELEMENT_IDX]))->tToken->pContent;\
     return AST_NODE_SUCCESS;\
 } 
 

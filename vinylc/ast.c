@@ -49,8 +49,8 @@ void recursive_get_ast_range(struct ast_elem* aeRootElem, struct file_input_idx_
         break;
     default:
         struct ast_node* node = (struct ast_node*)aeRootElem;
-        for (int i = 0; i < node->uNumSons; i++) {
-            recursive_get_ast_range(node->ppSons[i], fiirRange);
+        for (int i = 0; i < node->uNumElements; i++) {
+            recursive_get_ast_range(node->ppElements[i], fiirRange);
         }
         break;
     }
@@ -189,30 +189,30 @@ char new_ast_node(struct ast_node** out_anNode) {
 }
 
 char assert_ast_node_not_initialized(struct ast_node* anSelf) {
-    return anSelf->ppSons == 0 ? AST_NODE_SUCCESS : AST_NODE_FAIL;
+    return anSelf->ppElements == 0 ? AST_NODE_SUCCESS : AST_NODE_FAIL;
 }
 
-char init_ast_node(struct ast_node* anSelf, char iKind, unsigned int uNumSons) {
+char init_ast_node(struct ast_node* anSelf, char iKind, unsigned int uNumElements) {
     if (assert_ast_node_not_initialized(anSelf) == AST_NODE_FAIL) return AST_NODE_ALREADY_INITIALIZED;
 
     anSelf->iKind = iKind;
-    anSelf->uNumSons = uNumSons;
-    anSelf->ppSons = (struct ast_elem**)malloc(uNumSons * sizeof(struct ast_elem*));
-    for (int i = 0; i < uNumSons; i++) {
-        anSelf->ppSons[i] = (struct ast_elem*)malloc(sizeof(struct ast_elem));
-        if (anSelf->ppSons[i] == 0) return AST_NODE_FAIL;
-        anSelf->ppSons[i]->iKind = AST_NODE_KIND_EMPTY;
+    anSelf->uNumElements = uNumElements;
+    anSelf->ppElements = (struct ast_elem**)malloc(uNumElements * sizeof(struct ast_elem*));
+    for (int i = 0; i < uNumElements; i++) {
+        anSelf->ppElements[i] = (struct ast_elem*)malloc(sizeof(struct ast_elem));
+        if (anSelf->ppElements[i] == 0) return AST_NODE_FAIL;
+        anSelf->ppElements[i]->iKind = AST_NODE_KIND_EMPTY;
     }
     return AST_NODE_SUCCESS;
 }
 
-char replace_empty_node(struct ast_node* anSelf, struct ast_elem* anReplacement, unsigned int uSonIdx) {
+char replace_empty_node(struct ast_node* anSelf, struct ast_elem* anReplacement, unsigned int uElementIdx) {
     if (assert_ast_node_not_initialized(anSelf) == AST_NODE_SUCCESS) return AST_NODE_NOT_INITIALIZED;
-    if (uSonIdx >= anSelf->uNumSons) return AST_NODE_OOB;
-    if (anSelf->ppSons[uSonIdx]->iKind != AST_NODE_KIND_EMPTY) return AST_NODE_NOT_EMPTY_NODE;
+    if (uElementIdx >= anSelf->uNumElements) return AST_NODE_OOB;
+    if (anSelf->ppElements[uElementIdx]->iKind != AST_NODE_KIND_EMPTY) return AST_NODE_NOT_EMPTY_NODE;
 
-    free(anSelf->ppSons[uSonIdx]);
-    anSelf->ppSons[uSonIdx] = anReplacement;
+    free(anSelf->ppElements[uElementIdx]);
+    anSelf->ppElements[uElementIdx] = anReplacement;
     return AST_NODE_SUCCESS;
 }
 
@@ -834,15 +834,15 @@ char eval_stack_pop_else_stmt(struct expression_list_builder* elbBuilder, struct
         // todo: error
     }
     
-    struct ast_elem* elseSon = 0;
-    char eGetElseBlock = get_if_else_block(lastIfStatement, &elseSon);
+    struct ast_elem* elseElement = 0;
+    char eGetElseBlock = get_if_else_block(lastIfStatement, &elseElement);
     if (eGetElseBlock != AST_NODE_SUCCESS) return eGetElseBlock;
-    while (elseSon->iKind == AST_NODE_KIND_IF_STMT) {
-        lastIfStatement = elseSon;
-        eGetElseBlock = get_if_else_block(lastIfStatement, &elseSon);
+    while (elseElement->iKind == AST_NODE_KIND_IF_STMT) {
+        lastIfStatement = elseElement;
+        eGetElseBlock = get_if_else_block(lastIfStatement, &elseElement);
         if (eGetElseBlock != AST_NODE_SUCCESS) return eGetElseBlock;
     }
-    if (elseSon->iKind != AST_NODE_KIND_EMPTY) {
+    if (elseElement->iKind != AST_NODE_KIND_EMPTY) {
         // todo: error
     }
 
@@ -1299,9 +1299,9 @@ void print_ast_string(struct ast_elem* anRootElem, int indent) {
         break;
     default:
         struct ast_node* node = (struct ast_node*)anRootElem;
-        printf("AST NODE (%i) (%i %s)\n", anRootElem->iKind, node->uNumSons, node->uNumSons == 1 ? "son" : "sons");
-        for (int i = 0; i < node->uNumSons; i++) {
-            print_ast_string(node->ppSons[i], indent + 1);
+        printf("AST NODE (%i) (%i %s)\n", anRootElem->iKind, node->uNumElements, node->uNumElements == 1 ? "element" : "elements");
+        for (int i = 0; i < node->uNumElements; i++) {
+            print_ast_string(node->ppElements[i], indent + 1);
         }
         break;
     }
