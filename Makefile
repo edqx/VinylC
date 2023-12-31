@@ -1,4 +1,9 @@
 SOURCES := $(wildcard vinylc/*.c)
 
 default:
-	gcc -ggdb -O0 -o test.exe $(SOURCES)
+	mkdir -p bin
+	gcc -o bin/vinylc.exe $(SOURCES)
+
+debug:
+	mkdir -p bin
+	gcc -ggdb -O0 -o bin/vinylc.exe $(SOURCES)
