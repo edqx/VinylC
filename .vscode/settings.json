@@ -4,7 +4,9 @@
         "lexer.h": "c",
         "stdio.h": "c",
         "memory.h": "c",
-        "ast.h": "c"
+        "ast.h": "c",
+        "compare": "c",
+        "type_traits": "c"
     },
     "editor.fontSize": 11
 }

@@ -191,12 +191,20 @@ AST_ELEM_GET_FUNCTION(unary_operator, left_operand);
 AST_ELEM_GET_LITERAL_FUNCTION(var_decl_stmt, var_name);
 AST_ELEM_GET_FUNCTION(var_decl_stmt, var_initializer);
 
+AST_ELEM_GET_LITERAL_FUNCTION(func_decl_stmt, type);
+AST_ELEM_GET_FUNCTION(func_decl_stmt, ref);
+AST_ELEM_GET_FUNCTION(func_decl_stmt, formal_params);
+AST_ELEM_GET_FUNCTION(func_decl_stmt, ret_type);
+AST_ELEM_GET_FUNCTION(func_decl_stmt, impl);
+
 AST_ELEM_GET_FUNCTION(call, function_ref);
 AST_ELEM_GET_FUNCTION(call, params);
 
 AST_ELEM_GET_FUNCTION(if, condition);
 AST_ELEM_GET_FUNCTION(if, block);
 AST_ELEM_GET_FUNCTION(if, else_block);
+
+AST_ELEM_GET_FUNCTION(return, expr);
 
 char get_matching_close_parenthesis(char cOpenPar);
 char get_parenthesis_node_construction_kind(char cOpenPar);
