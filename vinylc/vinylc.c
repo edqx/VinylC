@@ -1,6 +1,7 @@
 #include "vector.h"
 #include "lexer.h"
 #include "ast.h"
+#include "ir.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,6 +43,8 @@ int main(int argc, char** argv) {
     }
 
     print_ast_string((struct ast_elem*)ast_node, 0);
+
+    
 
     return 0;
 }
